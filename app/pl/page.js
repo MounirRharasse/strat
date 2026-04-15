@@ -6,7 +6,8 @@ export default async function PL({ searchParams }) {
   const now = new Date()
   const periode = searchParams?.periode || 'mtd'
   const today = now.toISOString().split('T')[0]
-  const firstDayMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0]  const firstDayYear = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0]
+  const firstDayMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0]
+  const firstDayYear = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0]
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
 
   let since = firstDayMonth
