@@ -151,6 +151,85 @@ export default async function Dashboard() {
           <p className="text-gray-400">Pas de données pour aujourd'hui</p>
         </div>
       )}
+    {/* ACCÈS RAPIDE */}
+          <div className="mt-4">
+            <p className="text-gray-400 text-xs uppercase tracking-widest mb-3">Accès rapide</p>
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
+              <a href="/journal" className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 hover:bg-gray-800 transition">
+                <div className="w-9 h-9 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center flex-shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <rect x="2" y="2" width="12" height="12" rx="1.5"/>
+                    <line x1="5" y1="5" x2="11" y2="5"/>
+                    <line x1="5" y1="8" x2="11" y2="8"/>
+                    <line x1="5" y1="11" x2="8" y2="11"/>
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Journal</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Transactions du jour · Historique · Saisie</p>
+                </div>
+                <span className="text-gray-600">›</span>
+              </a>
+
+              <a href="/mix" className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 hover:bg-gray-800 transition">
+                <div className="w-9 h-9 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center flex-shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <rect x="1" y="8" width="3" height="6" rx="1"/>
+                    <rect x="6" y="5" width="3" height="9" rx="1"/>
+                    <rect x="11" y="2" width="3" height="12" rx="1"/>
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Mix ventes</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Top/Flop produits · VAE/VSP · Amplitudes</p>
+                </div>
+                <span className="text-gray-600">›</span>
+              </a>
+
+              <a href="/previsions" className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 hover:bg-gray-800 transition">
+                <div className="w-9 h-9 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center flex-shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <circle cx="8" cy="8" r="6"/>
+                    <polyline points="8,4 8,8 11,10"/>
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Prévisions</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Projection fin de mois · Échéances · Simulateur</p>
+                </div>
+                <span className="text-gray-600">›</span>
+              </a>
+
+              <a href="/pl" className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 hover:bg-gray-800 transition">
+                <div className="w-9 h-9 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center flex-shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M2 13 L2 7 L6 10 L9 5 L13 8"/>
+                    <line x1="1" y1="13" x2="15" y2="13"/>
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">P&L complet</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Résumé · Détail · Comparaisons</p>
+                </div>
+                <span className="text-gray-600">›</span>
+              </a>
+
+              <div className="flex items-center gap-3 px-4 py-3 opacity-40">
+                <div className="w-9 h-9 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center flex-shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <circle cx="8" cy="8" r="6"/>
+                    <line x1="8" y1="5" x2="8" y2="8"/>
+                    <circle cx="8" cy="11" r=".5" fill="currentColor"/>
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Apprendre</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Comprendre tes indicateurs</p>
+                </div>
+                <span className="text-xs text-gray-600 bg-gray-800 px-2 py-1 rounded-md">Bientôt</span>
+              </div>
+            </div>
+          </div>
     </div>
   )
 }
