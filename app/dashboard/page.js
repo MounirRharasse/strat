@@ -14,7 +14,7 @@ export default async function Dashboard() {
   const maxCA = Math.max(...weekly.map(j => j.ca))
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-4 max-w-md mx-auto">
+    <div className="min-h-screen bg-gray-950 text-white p-4 max-w-md mx-auto pb-24">
 
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
