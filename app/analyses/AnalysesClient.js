@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 const toISODate = (d) => new Date(d).toISOString().split('T')[0]
 
@@ -43,13 +43,13 @@ function getPeriodeDates(granularite, offset) {
   return { since, until, label, souslabel }
 }
 
-export default function AnalysesClient() {
+export default function AnalysesClient({ params }) {
   const [granularite, setGranularite] = useState('semaine')
   const [periodes, setPeriodes] = useState([
     { id: 0, offset: 0, data: null, loading: true, dates: null },
     { id: 1, offset: 1, data: null, loading: true, dates: null }
   ])
-  const [aiInsight, setAiInsight] = useState(null)
+  const [aiInsight, setAiInsight] = useState('')
   const [loadingAI, setLoadingAI] = useState(false)
 
   const fmt = (n) => new Intl.NumberFormat('fr-FR', {
@@ -69,21 +69,29 @@ export default function AnalysesClient() {
   }
 
   useEffect(() => {
+    setAiInsight('')
     periodes.forEach(p => loadPeriode(p.id, p.offset, granularite))
   }, [granularite])
 
-  // Générer l'insight IA quand les deux premières périodes sont chargées
-  useEffect(() => {
+  function analyserIA() {
     const p0 = periodes.find(p => p.id === 0)
     const p1 = periodes.find(p => p.id === 1)
+    console.log('analyserIA', !!p0?.data, !!p1?.data)
     if (!p0?.data || !p1?.data) return
+    console.log('fetch IA...')
     setLoadingAI(true)
-    setAiInsight(null)
+    setAiInsight('')
     fetch('/api/ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'analyses',
+        context: {
+          nom: params?.nom_restaurant || 'le restaurant',
+          type: params?.type_restaurant || 'fast-food',
+          objectif_ca: params?.objectif_ca || 45000,
+          objectif_food_cost: params?.objectif_food_cost || 30
+        },
         data: {
           labelRef: p0.dates?.label || 'Periode 1',
           caRef: p0.data.ca.ht,
@@ -100,16 +108,24 @@ export default function AnalysesClient() {
         }
       })
     })
-    .then(r => r.json())
-    .then(d => { setAiInsight(d.insight); setLoadingAI(false) })
-    .catch(() => setLoadingAI(false))
-  }, [periodes])
+    .then(r => r.text())
+.then(text => { 
+  console.log('IA réponse:', text.substring(0, 100))
+  setAiInsight(text)
+  setLoadingAI(false) 
+})
+.catch(err => { 
+  console.log('IA erreur:', err)
+  setLoadingAI(false) 
+})
+  }
 
   function navPeriode(id, dir) {
     const p = periodes.find(x => x.id === id)
     if (!p) return
     const newOffset = p.offset + dir
     if (newOffset < 0) return
+    setAiInsight('')
     setPeriodes(prev => prev.map(x => x.id === id ? { ...x, offset: newOffset, data: null, loading: true } : x))
     loadPeriode(id, newOffset, granularite)
   }
@@ -141,6 +157,7 @@ export default function AnalysesClient() {
   ]
 
   const ref = periodes[0]
+  const donneesChargees = periodes[0]?.data && periodes[1]?.data && !periodes[0]?.loading && !periodes[1]?.loading
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4 max-w-md mx-auto pb-24">
@@ -152,7 +169,7 @@ export default function AnalysesClient() {
 
       <div className="flex gap-2 mb-4">
         {['semaine', 'mois', 'trimestre'].map(g => (
-          <button key={g} onClick={() => setGranularite(g)}
+          <button key={g} onClick={() => { setGranularite(g); setAiInsight('') }}
             className={"flex-1 text-center text-xs py-2 rounded-xl border transition capitalize " + (granularite === g ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>
             {g === 'semaine' ? 'Semaine' : g === 'mois' ? 'Mois' : 'Trimestre'}
           </button>
@@ -171,12 +188,12 @@ export default function AnalysesClient() {
           {periodes.map((p, idx) => (
             <div key={p.id} className={"bg-gray-900 rounded-2xl border p-3 " + (idx === 0 ? 'border-blue-800' : 'border-gray-800')}>
               <div className="flex justify-between items-center mb-2">
-                <button onClick={() => navPeriode(p.id, -1)} className="w-6 h-6 rounded-lg bg-gray-800 flex items-center justify-center text-gray-400 text-xs">‹</button>
+                <button onClick={() => navPeriode(p.id, 1)} className="w-6 h-6 rounded-lg bg-gray-800 flex items-center justify-center text-gray-400 text-xs">‹</button>
                 {idx === 0 && <span className="text-xs text-blue-400 font-medium">Ref.</span>}
                 {idx > 0 && periodes.length > 2 && (
                   <button onClick={() => supprimerPeriode(p.id)} className="text-gray-600 text-xs">✕</button>
                 )}
-                <button onClick={() => navPeriode(p.id, 1)} disabled={p.offset === 0} className="w-6 h-6 rounded-lg bg-gray-800 flex items-center justify-center text-gray-400 text-xs disabled:opacity-30">›</button>
+                <button onClick={() => navPeriode(p.id, -1)} disabled={p.offset === 0} className="w-6 h-6 rounded-lg bg-gray-800 flex items-center justify-center text-gray-400 text-xs disabled:opacity-30">›</button>
               </div>
               {p.loading ? (
                 <div className="text-center py-2">
@@ -222,18 +239,6 @@ export default function AnalysesClient() {
           </div>
         </div>
       )}
-
-      {/* INSIGHT IA */}
-      <div className="bg-blue-950/30 border border-blue-900/30 border-l-4 border-l-blue-500 rounded-xl px-4 py-3 mb-4">
-        <p className="text-xs text-blue-400 uppercase tracking-wider mb-1">Analyse IA</p>
-        {loadingAI ? (
-          <p className="text-sm text-gray-500 animate-pulse">Analyse en cours...</p>
-        ) : aiInsight ? (
-          <p className="text-sm text-gray-300 leading-relaxed">{aiInsight}</p>
-        ) : (
-          <p className="text-sm text-gray-500">Chargement des donnees...</p>
-        )}
-      </div>
 
       <div>
         <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">Tableau comparatif</p>
