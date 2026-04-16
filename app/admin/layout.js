@@ -17,6 +17,7 @@ export default function AdminLayout({ children }) {
             { href: '/admin/clients', label: 'Clients', icon: '🏪' },
             { href: '/admin/imports', label: 'Imports données', icon: '📥' },
             { href: '/admin/monitoring', label: 'Monitoring', icon: '📡' },
+            { href: '/admin/donnees', label: 'Données', icon: '🗄️' },
           ].map(item => (
             <Link key={item.href} href={item.href}
               className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition">
