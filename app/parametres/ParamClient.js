@@ -31,34 +31,39 @@ export default function ParamClient({ params: initialParams }) {
     setEditing(null)
   }
 
-  const Row = ({ label, value, field, type = 'text', suffix = '', prefix = '' }) => {
+  const Row = ({ label, value, field, type = 'text', suffix = '', prefix = '', hint = '' }) => {
     const [val, setVal] = useState(value)
     const isEditing = editing === field
 
     return (
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 last:border-0">
-        <p className="text-sm text-gray-300">{label}</p>
-        {isEditing ? (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">{prefix}</span>
-            <input
-              type={type === 'number' ? 'number' : 'text'}
-              value={val}
-              onChange={e => setVal(e.target.value)}
-              className="w-24 bg-gray-800 text-white text-sm font-mono px-2 py-1 rounded-lg focus:outline-none text-right"
-              autoFocus
-            />
-            <span className="text-sm text-gray-500">{suffix}</span>
-            <button onClick={() => save({ [field]: type === 'number' ? parseFloat(val) : val })}
-              className="text-xs bg-white text-gray-950 px-2 py-1 rounded-lg font-semibold">OK</button>
-            <button onClick={() => setEditing(null)} className="text-xs text-gray-500">✕</button>
+      <div className="px-4 py-3 border-b border-gray-800 last:border-0">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-gray-300">{label}</p>
+            {hint && <p className="text-xs text-gray-500 mt-0.5">{hint}</p>}
           </div>
-        ) : (
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setVal(value); setEditing(field) }}>
-            <span className="text-sm font-mono text-gray-400">{prefix}{value}{suffix}</span>
-            <span className="text-gray-600 text-xs">›</span>
-          </div>
-        )}
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">{prefix}</span>
+              <input
+                type={type === 'number' ? 'number' : 'text'}
+                value={val}
+                onChange={e => setVal(e.target.value)}
+                className="w-24 bg-gray-800 text-white text-sm font-mono px-2 py-1 rounded-lg focus:outline-none text-right"
+                autoFocus
+              />
+              <span className="text-sm text-gray-500">{suffix}</span>
+              <button onClick={() => save({ [field]: type === 'number' ? parseFloat(val) : val })}
+                className="text-xs bg-white text-gray-950 px-2 py-1 rounded-lg font-semibold">OK</button>
+              <button onClick={() => setEditing(null)} className="text-xs text-gray-500">✕</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setVal(value); setEditing(field) }}>
+              <span className="text-sm font-mono text-gray-400">{prefix}{value}{suffix}</span>
+              <span className="text-gray-600 text-xs">›</span>
+            </div>
+          )}
+        </div>
       </div>
     )
   }
@@ -88,9 +93,10 @@ export default function ParamClient({ params: initialParams }) {
     )
   }
 
-  const SectionHeader = ({ label }) => (
-    <div className="px-4 py-2 mt-4">
+  const SectionHeader = ({ label, hint = '' }) => (
+    <div className="px-1 py-2 mt-4">
       <p className="text-xs text-gray-500 uppercase tracking-widest">{label}</p>
+      {hint && <p className="text-xs text-gray-600 mt-1">{hint}</p>}
     </div>
   )
 
@@ -115,6 +121,7 @@ export default function ParamClient({ params: initialParams }) {
         )}
       </div>
 
+      {/* MON RESTAURANT */}
       <SectionHeader label="Mon restaurant" />
       <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
         <Row label="Nom" field="nom_restaurant" value={params.nom_restaurant} />
@@ -126,12 +133,14 @@ export default function ParamClient({ params: initialParams }) {
         />
       </div>
 
+      {/* OBJECTIFS */}
       <SectionHeader label="Objectifs" />
       <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
         <Row label="CA mensuel cible" field="objectif_ca" value={params.objectif_ca} type="number" suffix="€" />
         <Row label="Food cost cible" field="objectif_food_cost" value={params.objectif_food_cost} type="number" suffix="%" />
         <Row label="Staff cost cible" field="objectif_staff_cost" value={params.objectif_staff_cost} type="number" suffix="%" />
         <Row label="Marge op. cible" field="objectif_marge" value={params.objectif_marge} type="number" suffix="%" />
+        <Row label="Ticket moyen cible" field="alerte_ticket_min" value={params.alerte_ticket_min} type="number" suffix="€" />
       </div>
 
       <div className="mt-2 px-1">
@@ -158,54 +167,10 @@ export default function ParamClient({ params: initialParams }) {
         </div>
       </div>
 
+      {/* ALERTES */}
       <SectionHeader label="Seuils d'alerte" />
       <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-800">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-300">Food cost max</p>
-              <p className="text-xs text-gray-500 mt-0.5">Alerte rouge si depasse</p>
-            </div>
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setEditing(editing === 'alerte_food_cost_max' ? null : 'alerte_food_cost_max')}>
-              <span className="text-sm font-mono text-red-400">{params.alerte_food_cost_max}%</span>
-              <span className="text-gray-600 text-xs">›</span>
-            </div>
-          </div>
-          {editing === 'alerte_food_cost_max' && (
-            <div className="flex items-center gap-2 mt-3">
-              <input type="number" defaultValue={params.alerte_food_cost_max}
-                id="fc-max-input"
-                className="w-20 bg-gray-800 text-white text-sm font-mono px-2 py-1 rounded-lg focus:outline-none text-right" autoFocus />
-              <span className="text-sm text-gray-500">%</span>
-              <button onClick={() => save({ alerte_food_cost_max: parseFloat(document.getElementById('fc-max-input').value) })}
-                className="text-xs bg-white text-gray-950 px-2 py-1 rounded-lg font-semibold">OK</button>
-              <button onClick={() => setEditing(null)} className="text-xs text-gray-500">✕</button>
-            </div>
-          )}
-        </div>
-        <div className="px-4 py-3 border-b border-gray-800">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-300">Ticket moyen min</p>
-              <p className="text-xs text-gray-500 mt-0.5">Alerte si en dessous</p>
-            </div>
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setEditing(editing === 'alerte_ticket_min' ? null : 'alerte_ticket_min')}>
-              <span className="text-sm font-mono text-yellow-400">{params.alerte_ticket_min}€</span>
-              <span className="text-gray-600 text-xs">›</span>
-            </div>
-          </div>
-          {editing === 'alerte_ticket_min' && (
-            <div className="flex items-center gap-2 mt-3">
-              <input type="number" step="0.5" defaultValue={params.alerte_ticket_min}
-                id="ticket-min-input"
-                className="w-20 bg-gray-800 text-white text-sm font-mono px-2 py-1 rounded-lg focus:outline-none text-right" autoFocus />
-              <span className="text-sm text-gray-500">€</span>
-              <button onClick={() => save({ alerte_ticket_min: parseFloat(document.getElementById('ticket-min-input').value) })}
-                className="text-xs bg-white text-gray-950 px-2 py-1 rounded-lg font-semibold">OK</button>
-              <button onClick={() => setEditing(null)} className="text-xs text-gray-500">✕</button>
-            </div>
-          )}
-        </div>
+        <Row label="Food cost max" field="alerte_food_cost_max" value={params.alerte_food_cost_max} type="number" suffix="%" hint="Alerte rouge si depasse" />
         <SelectRow label="Frequence inventaire" field="frequence_inventaire" value={params.frequence_inventaire}
           options={[
             { val: 'hebdomadaire', label: 'Hebdomadaire' },
@@ -214,6 +179,44 @@ export default function ParamClient({ params: initialParams }) {
         />
       </div>
 
+      {/* COMMISSIONS */}
+      <SectionHeader label="Taux de commissions" hint="Utilises pour estimer tes frais bancaires et plateformes" />
+      <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
+        <Row
+          label="Commission CB / Borne"
+          field="taux_commission_cb"
+          value={params.taux_commission_cb ?? 1.5}
+          type="number"
+          suffix="%"
+          hint="Taux prelave par ta banque sur les paiements CB"
+        />
+        <Row
+          label="Commission Titres-restaurant"
+          field="taux_commission_tr"
+          value={params.taux_commission_tr ?? 4.0}
+          type="number"
+          suffix="%"
+          hint="Taux prelave sur les tickets restaurant"
+        />
+        <Row
+          label="Commission Foxorder"
+          field="taux_commission_foxorder"
+          value={params.taux_commission_foxorder ?? 0}
+          type="number"
+          suffix="%"
+          hint="Taux de commission Foxorder sur les commandes en ligne"
+        />
+        <Row
+          label="Commission Uber Eats"
+          field="taux_commission_uber"
+          value={params.taux_commission_uber ?? 15.0}
+          type="number"
+          suffix="%"
+          hint="Taux de commission Uber Eats sur tes ventes"
+        />
+      </div>
+
+      {/* CONNEXIONS */}
       <SectionHeader label="Connexions" />
       <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
@@ -244,6 +247,7 @@ export default function ParamClient({ params: initialParams }) {
         ))}
       </div>
 
+      {/* COMPTE */}
       <SectionHeader label="Compte" />
       <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">

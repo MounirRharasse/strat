@@ -118,7 +118,7 @@ const CATEGORIES_ENTREE = [
   { val: 'autre_entree', label: 'Autre entree', icon: '💰' },
 ]
 
-const TVA_TAUX = [5.5, 10, 20]
+const TVA_TAUX = [0, 5.5, 10, 20]
 
 export default function FAB() {
   const [open, setOpen] = useState(false)
@@ -135,6 +135,7 @@ export default function FAB() {
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [nbCommandes, setNbCommandes] = useState('')
 
   useEffect(() => {
     if (fournisseur.length < 2) { setSuggestions([]); return }
@@ -168,6 +169,7 @@ export default function FAB() {
     setNote('')
     setDate(new Date().toISOString().split('T')[0])
     setSuccess(false)
+    setNbCommandes('')
   }
 
   function close() {
@@ -359,13 +361,25 @@ export default function FAB() {
                         <span className="font-mono">{montantTVA.toFixed(2)}€</span>
                       </div>
                     </div>
-                    <input
-                      type="text"
-                      value={note}
-                      onChange={e => setNote(e.target.value)}
-                      className="w-full bg-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none mb-4 text-sm"
-                      placeholder="Note (optionnel)"
-                    />
+                    {categorieEntree === 'uber_eats' && (
+  <div className="flex items-center gap-2 bg-gray-800 rounded-xl px-4 py-3 mb-3">
+    <span className="text-gray-400 text-sm">Nb commandes</span>
+    <input
+      type="number"
+      value={nbCommandes}
+      onChange={e => setNbCommandes(e.target.value)}
+      className="flex-1 bg-transparent text-white font-mono text-right focus:outline-none"
+      placeholder="0"
+    />
+  </div>
+)}
+<input
+  type="text"
+  value={note}
+  onChange={e => setNote(e.target.value)}
+  className="w-full bg-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none mb-4 text-sm"
+  placeholder="Note (optionnel)"
+/>
                     <button
                       onClick={submitEntree}
                       disabled={loading}

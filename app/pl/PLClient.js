@@ -15,8 +15,9 @@ export default function PLClient({ data, periode }) {
     autresChargesPersonnel, fraisDeplacement, entretiensReparations,
     energie, autresFraisInfluencables, loyersCharges, honoraires,
     redevanceMarque, prestationsOp, fraisDivers, autresCharges,
+    caUberTotal, commissionCB, commissionTR, commissionUber, commissionFoxorder, totalCommissions,
     margebrute, totalPersonnel, totalInfluencables, totalFixe,
-    ebe, impots, resultatNet, transactions, periode: per, since, today } = data
+    ebe, impots, resultatNet, transactions, since, today } = data
 
   const isEstime = isMode === 'auto' ? impots : (parseFloat(isManuel) || 0)
   const resultatFinal = ebe - isEstime
@@ -45,20 +46,18 @@ export default function PLClient({ data, periode }) {
 
     import('chart.js').then((ChartModule) => {
       const { Chart, ArcElement, Tooltip, Legend, DoughnutController } = ChartModule
-
       Chart.register(ArcElement, Tooltip, Legend, DoughnutController)
-
       if (chartInstance.current) chartInstance.current.destroy()
 
-      const totalCharges = consommations + totalPersonnel + totalInfluencables + totalFixe
+      const totalCharges = consommations + totalPersonnel + totalInfluencables + totalFixe + (totalCommissions || 0)
       if (totalCharges === 0) return
 
       chartInstance.current = new Chart(donutRef.current, {
         type: 'doughnut',
         data: {
           datasets: [{
-            data: [consommations, totalPersonnel, totalInfluencables, totalFixe],
-            backgroundColor: ['#3b82f6', '#a78bfa', '#22c55e', '#06b6d4'],
+            data: [consommations, totalPersonnel, totalInfluencables, totalFixe, totalCommissions || 0],
+            backgroundColor: ['#3b82f6', '#a78bfa', '#22c55e', '#06b6d4', '#f97316'],
             borderWidth: 0,
             hoverOffset: 4
           }]
@@ -71,29 +70,17 @@ export default function PLClient({ data, periode }) {
             tooltip: {
               callbacks: {
                 label: (ctx) => {
-                  const labels = ['Consommations', 'Personnel', 'Influencables', 'Fixes']
+                  const labels = ['Consommations', 'Personnel', 'Influencables', 'Fixes', 'Commissions']
                   const pcts = ctx.parsed / totalCharges * 100
                   return ' ' + labels[ctx.dataIndex] + ': ' + pcts.toFixed(1) + '%'
                 }
               }
             }
-          },
-          onClick: (e, els) => {
-            if (!els.length) return
-            const cats = [
-              ['consommations'],
-              ['frais_personnel', 'autres_charges_personnel', 'frais_deplacement'],
-              ['entretiens_reparations', 'energie', 'autres_frais_influencables'],
-              ['loyers_charges', 'honoraires', 'redevance_marque', 'prestations_operationnelles', 'frais_divers', 'autres_charges']
-            ]
-            const colors = ['#3b82f6', '#a78bfa', '#22c55e', '#06b6d4']
-            const titles = ['Consommations', 'Personnel', 'Frais influencables', 'Frais fixes']
-            openPanel(titles[els[0].index], cats[els[0].index], colors[els[0].index])
           }
         }
       })
     })
-  }, [onglet, consommations, totalPersonnel, totalInfluencables, totalFixe])
+  }, [onglet, consommations, totalPersonnel, totalInfluencables, totalFixe, totalCommissions])
 
   const PRow = ({ label, value, isTotal, isSub, isMinus, indent, secteur, cats, color }) => (
     <div
@@ -155,6 +142,9 @@ export default function PLClient({ data, periode }) {
           <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">CA HT</p>
           <p className="text-xl font-bold font-mono text-green-400">{fmt(caHT)}</p>
           <p className="text-xs text-gray-500 mt-1">TTC {fmt(caBrut)}</p>
+          {caUberTotal > 0 && (
+            <p className="text-xs text-green-700 mt-0.5">dont Uber {fmt(caUberTotal)}</p>
+          )}
         </div>
         <div className="bg-gray-900 rounded-2xl p-3 border border-gray-800">
           <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">EBE</p>
@@ -218,6 +208,12 @@ export default function PLClient({ data, periode }) {
             <PRow label="Prestations Operationnelles" value={-prestationsOp} isMinus indent cats={['prestations_operationnelles']} color="#06b6d4" />
             <PRow label="Frais Divers" value={-fraisDivers} isMinus indent cats={['frais_divers']} color="#06b6d4" />
             <PRow label="Autres charges" value={-autresCharges} isMinus indent cats={['autres_charges']} color="#06b6d4" />
+
+            <SectionHeader label="Commissions plateformes" color="bg-orange-950/20 text-orange-400" />
+            <PRow label="Commissions CB / Borne" value={-commissionCB} isMinus indent />
+            <PRow label="Commissions Titres-restaurant" value={-commissionTR} isMinus indent />
+            {commissionUber > 0 && <PRow label="Commissions Uber Eats" value={-commissionUber} isMinus indent />}
+            {commissionFoxorder > 0 && <PRow label="Commissions Foxorder" value={-commissionFoxorder} isMinus indent />}
 
             <PRow label="EBE" value={ebe} isTotal secteur="15-20%" />
 
@@ -283,22 +279,23 @@ export default function PLClient({ data, periode }) {
 
           <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4 mb-4">
             <p className="text-xs text-gray-400 uppercase tracking-widest mb-4">Repartition des charges</p>
-            <p className="text-xs text-gray-500 mb-4">Clique sur un segment pour le detail</p>
             <div className="flex items-center gap-4">
               <canvas ref={donutRef} width={110} height={110} className="flex-shrink-0"></canvas>
               <div className="flex-1 space-y-2">
                 {[
-                  { label: 'Consommations', pct: caHT > 0 ? (consommations / caHT * 100).toFixed(1) : 0, color: '#3b82f6', cats: ['consommations'] },
-                  { label: 'Personnel', pct: caHT > 0 ? (totalPersonnel / caHT * 100).toFixed(1) : 0, color: '#a78bfa', cats: ['frais_personnel', 'autres_charges_personnel', 'frais_deplacement'] },
-                  { label: 'Frais influencables', pct: caHT > 0 ? (totalInfluencables / caHT * 100).toFixed(1) : 0, color: '#22c55e', cats: ['entretiens_reparations', 'energie', 'autres_frais_influencables'] },
-                  { label: 'Frais fixes', pct: caHT > 0 ? (totalFixe / caHT * 100).toFixed(1) : 0, color: '#06b6d4', cats: ['loyers_charges', 'honoraires', 'redevance_marque', 'prestations_operationnelles', 'frais_divers', 'autres_charges'] },
-                ].map(item => (
-                  <div key={item.label} className="flex items-center justify-between cursor-pointer hover:bg-gray-800/50 rounded-lg px-2 py-1" onClick={() => openPanel(item.label, item.cats, item.color)}>
+                  { label: 'Consommations', val: consommations, color: '#3b82f6', cats: ['consommations'] },
+                  { label: 'Personnel', val: totalPersonnel, color: '#a78bfa', cats: ['frais_personnel', 'autres_charges_personnel', 'frais_deplacement'] },
+                  { label: 'Frais influencables', val: totalInfluencables, color: '#22c55e', cats: ['entretiens_reparations', 'energie', 'autres_frais_influencables'] },
+                  { label: 'Frais fixes', val: totalFixe, color: '#06b6d4', cats: ['loyers_charges', 'honoraires', 'redevance_marque', 'prestations_operationnelles', 'frais_divers', 'autres_charges'] },
+                  { label: 'Commissions', val: totalCommissions || 0, color: '#f97316', cats: [] },
+                ].filter(i => i.val > 0).map(item => (
+                  <div key={item.label} className="flex items-center justify-between cursor-pointer hover:bg-gray-800/50 rounded-lg px-2 py-1"
+                    onClick={() => item.cats.length > 0 ? openPanel(item.label, item.cats, item.color) : null}>
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: item.color }}></div>
                       <span className="text-xs text-gray-300">{item.label}</span>
                     </div>
-                    <span className="text-xs font-mono text-gray-400">{item.pct}%</span>
+                    <span className="text-xs font-mono text-gray-400">{caHT > 0 ? (item.val / caHT * 100).toFixed(1) : 0}%</span>
                   </div>
                 ))}
               </div>
@@ -362,8 +359,9 @@ export default function PLClient({ data, periode }) {
             </div>
             {[
               { label: 'CA HT', val: fmt(caHT), norme: '—' },
-              { label: 'Food cost', val: foodCostP.toFixed(1) + '%', norme: '28-32%', ok: foodCostP <= 32 },
-              { label: 'Staff cost', val: staffCostP.toFixed(1) + '%', norme: '28-35%', ok: staffCostP <= 35 },
+              { label: 'Food cost', val: foodCostP.toFixed(1) + '%', norme: '28-32%', ok: foodCostP <= 32 && foodCostP > 0 },
+              { label: 'Staff cost', val: staffCostP.toFixed(1) + '%', norme: '28-35%', ok: staffCostP <= 35 && staffCostP > 0 },
+              { label: 'Commissions', val: fmt(totalCommissions || 0), norme: '—' },
               { label: 'EBE', val: ebeP.toFixed(1) + '%', norme: '15-20%', ok: ebeP >= 15 },
               { label: 'Resultat net', val: (resultatFinal >= 0 ? '' : '-') + fmt(resultatFinal), norme: '> 0', ok: resultatFinal >= 0 },
             ].map(row => (
@@ -388,19 +386,18 @@ export default function PLClient({ data, periode }) {
                 </svg>
               </button>
               <div className="flex-1">
-                <p className="font-semibold text-white" style={{ color: panel.color }}>{panel.title}</p>
+                <p className="font-semibold" style={{ color: panel.color }}>{panel.title}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{panel.txs.length} ecriture(s)</p>
               </div>
               <p className="text-lg font-mono font-bold text-red-400">-{fmt(panel.total)}</p>
             </div>
-
             {panel.txs.length === 0 ? (
               <div className="p-8 text-center text-gray-500 text-sm">Aucune ecriture sur cette periode</div>
             ) : (
               <>
                 <div className="p-4 border-b border-gray-800">
                   <p className="text-xs text-gray-500 mb-3">Repartition par fournisseur</p>
-                  {panel.txs.map((t, i) => {
+                  {panel.txs.map((t) => {
                     const pctBar = panel.total > 0 ? (t.montant_ht / panel.total * 100) : 0
                     return (
                       <div key={t.id} className="mb-3">
@@ -419,7 +416,6 @@ export default function PLClient({ data, periode }) {
                     )
                   })}
                 </div>
-
                 <div className="p-4">
                   <p className="text-xs text-gray-500 mb-3">Toutes les ecritures</p>
                   {panel.txs.map(t => (

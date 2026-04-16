@@ -43,41 +43,18 @@ function getPeriodeDates(granularite, offset) {
   return { since, until, label, souslabel }
 }
 
-function genInsight(periodes) {
-  if (periodes.length < 2 || !periodes[0].data || !periodes[1].data) return null
-  const a = periodes[0].data
-  const b = periodes[1].data
-  const diffCA = a.ca.brut - b.ca.brut
-  const diffPct = b.ca.brut > 0 ? (diffCA / b.ca.brut * 100) : 0
-  const diffFC = a.foodCostP - b.foodCostP
-
-  let txt = ''
-  if (diffPct > 5) txt += 'CA en hausse de +' + diffPct.toFixed(1) + '% vs periode precedente. '
-  else if (diffPct < -5) txt += 'CA en baisse de ' + diffPct.toFixed(1) + '% vs periode precedente. '
-  else txt += 'CA stable vs periode precedente (' + (diffPct > 0 ? '+' : '') + diffPct.toFixed(1) + '%). '
-
-  if (a.foodCostP > 32) txt += 'Food cost a surveiller : ' + a.foodCostP.toFixed(1) + '% (norme 28-32%). '
-  else if (diffFC > 2) txt += 'Food cost en hausse de +' + diffFC.toFixed(1) + 'pts. '
-  else txt += 'Food cost sous controle : ' + a.foodCostP.toFixed(1) + '%. '
-
-  if (a.panierMoyen > b.panierMoyen) txt += 'Panier moyen en progression : ' + a.panierMoyen.toFixed(2) + '€.'
-  else if (a.panierMoyen < b.panierMoyen) txt += 'Panier moyen en baisse : ' + a.panierMoyen.toFixed(2) + '€.'
-
-  return txt
-}
-
 export default function AnalysesClient() {
   const [granularite, setGranularite] = useState('semaine')
   const [periodes, setPeriodes] = useState([
     { id: 0, offset: 0, data: null, loading: true, dates: null },
     { id: 1, offset: 1, data: null, loading: true, dates: null }
   ])
+  const [aiInsight, setAiInsight] = useState(null)
+  const [loadingAI, setLoadingAI] = useState(false)
 
   const fmt = (n) => new Intl.NumberFormat('fr-FR', {
     style: 'currency', currency: 'EUR', maximumFractionDigits: 0
   }).format(n || 0)
-
-  const fmtPct = (n) => (n > 0 ? '+' : '') + (n || 0).toFixed(1) + '%'
 
   async function loadPeriode(id, offset, gran) {
     const dates = getPeriodeDates(gran || granularite, offset)
@@ -94,6 +71,39 @@ export default function AnalysesClient() {
   useEffect(() => {
     periodes.forEach(p => loadPeriode(p.id, p.offset, granularite))
   }, [granularite])
+
+  // Générer l'insight IA quand les deux premières périodes sont chargées
+  useEffect(() => {
+    const p0 = periodes.find(p => p.id === 0)
+    const p1 = periodes.find(p => p.id === 1)
+    if (!p0?.data || !p1?.data) return
+    setLoadingAI(true)
+    setAiInsight(null)
+    fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'analyses',
+        data: {
+          labelRef: p0.dates?.label || 'Periode 1',
+          caRef: p0.data.ca.ht,
+          cmdRef: p0.data.frequentation.nbCommandes,
+          panierRef: p0.data.panierMoyen,
+          fcRef: p0.data.foodCostP,
+          ebeRef: p0.data.ebe,
+          labelComp: p1.dates?.label || 'Periode 2',
+          caComp: p1.data.ca.ht,
+          cmdComp: p1.data.frequentation.nbCommandes,
+          panierComp: p1.data.panierMoyen,
+          fcComp: p1.data.foodCostP,
+          ebeComp: p1.data.ebe,
+        }
+      })
+    })
+    .then(r => r.json())
+    .then(d => { setAiInsight(d.insight); setLoadingAI(false) })
+    .catch(() => setLoadingAI(false))
+  }, [periodes])
 
   function navPeriode(id, dir) {
     const p = periodes.find(x => x.id === id)
@@ -121,7 +131,7 @@ export default function AnalysesClient() {
     new Set(periodes.filter(p => p.data).map(p => p.data.nbJours)).size > 1
 
   const kpis = [
-    { key: 'ca', label: 'CA', fmt: (d) => fmt(d.ca.brut), val: (d) => d.ca.brut, higher: true },
+    { key: 'ca', label: 'CA HT', fmt: (d) => fmt(d.ca.ht), val: (d) => d.ca.ht, higher: true },
     { key: 'freq', label: 'Commandes', fmt: (d) => d.frequentation.nbCommandes, val: (d) => d.frequentation.nbCommandes, higher: true },
     { key: 'panier', label: 'Panier moyen', fmt: (d) => d.panierMoyen.toFixed(2) + '€', val: (d) => d.panierMoyen, higher: true },
     { key: 'fc', label: 'Food cost', fmt: (d) => d.foodCostP.toFixed(1) + '%', val: (d) => d.foodCostP, higher: false },
@@ -131,7 +141,6 @@ export default function AnalysesClient() {
   ]
 
   const ref = periodes[0]
-  const insight = genInsight(periodes)
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4 max-w-md mx-auto pb-24">
@@ -178,7 +187,10 @@ export default function AnalysesClient() {
                   <p className="text-xs font-semibold text-white text-center">{p.dates.label}</p>
                   <p className="text-xs text-gray-500 text-center mt-0.5">{p.dates.souslabel}</p>
                   {p.data && (
-                    <p className="text-sm font-mono font-bold text-green-400 text-center mt-2">{fmt(p.data.ca.brut)}</p>
+                    <>
+                      <p className="text-sm font-mono font-bold text-green-400 text-center mt-2">{fmt(p.data.ca.ht)}</p>
+                      <p className="text-xs text-gray-600 text-center">HT</p>
+                    </>
                   )}
                 </>
               ) : null}
@@ -197,7 +209,7 @@ export default function AnalysesClient() {
           <p className="text-xs text-gray-400 uppercase tracking-widest mb-3">Resume periode de reference</p>
           <div className="grid grid-cols-2 gap-2">
             {[
-              { label: 'CA', val: fmt(ref.data.ca.brut) },
+              { label: 'CA HT', val: fmt(ref.data.ca.ht) },
               { label: 'Commandes', val: ref.data.frequentation.nbCommandes },
               { label: 'Panier moyen', val: ref.data.panierMoyen.toFixed(2) + '€' },
               { label: 'EBE', val: fmt(ref.data.ebe) },
@@ -211,12 +223,17 @@ export default function AnalysesClient() {
         </div>
       )}
 
-      {insight && (
-        <div className="bg-blue-950/30 border border-blue-900/30 border-l-4 border-l-blue-500 rounded-xl px-4 py-3 mb-4">
-          <p className="text-xs text-blue-400 uppercase tracking-wider mb-1">Analyse automatique</p>
-          <p className="text-sm text-gray-300 leading-relaxed">{insight}</p>
-        </div>
-      )}
+      {/* INSIGHT IA */}
+      <div className="bg-blue-950/30 border border-blue-900/30 border-l-4 border-l-blue-500 rounded-xl px-4 py-3 mb-4">
+        <p className="text-xs text-blue-400 uppercase tracking-wider mb-1">Analyse IA</p>
+        {loadingAI ? (
+          <p className="text-sm text-gray-500 animate-pulse">Analyse en cours...</p>
+        ) : aiInsight ? (
+          <p className="text-sm text-gray-300 leading-relaxed">{aiInsight}</p>
+        ) : (
+          <p className="text-sm text-gray-500">Chargement des donnees...</p>
+        )}
+      </div>
 
       <div>
         <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">Tableau comparatif</p>
