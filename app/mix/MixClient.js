@@ -3,8 +3,10 @@
 import { useState } from 'react'
 import Link from 'next/link'
 
-export default function MixClient({ mix, uberTop, uberParHeure, caUber, caRestaurant, caTotal, periode }) {
+export default function MixClient({ mix, uberTop, uberParHeure, caUber, caRestaurant, caTotal, periode, amplitudePopinaDB }) {
   const [onglet, setOnglet] = useState('amplitude')
+  const [loadingPopina, setLoadingPopina] = useState(false)
+  const [amplitudePopina, setAmplitudePopina] = useState({})
 
   const fmt = (n) => new Intl.NumberFormat('fr-FR', {
     style: 'currency', currency: 'EUR', maximumFractionDigits: 0
@@ -12,19 +14,36 @@ export default function MixClient({ mix, uberTop, uberParHeure, caUber, caRestau
 
   const pct = (val, total) => total > 0 ? Math.round(val / total * 100) : 0
 
+  async function chargerAmplitudePopina() {
+    setLoadingPopina(true)
+    const since = periode === 'today' ? new Date().toISOString().split('T')[0] :
+                  periode === 'week' ? new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0] :
+                  new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
+    const until = new Date().toISOString().split('T')[0]
+    const res = await fetch(`/api/mix/amplitude?since=${since}&until=${until}`)
+    const data = await res.json()
+    setAmplitudePopina(data.parHeure || {})
+    setLoadingPopina(false)
+  }
+
   const heures = Array.from({ length: 13 }, (_, i) => String(i + 10).padStart(2, '0'))
   const amplitudeData = heures.map(h => {
     const uber = uberParHeure[h] || { nb: 0, ca: 0 }
+    const popinaDB = amplitudePopinaDB[h] || { nb: 0, ca: 0 }
+    const popinaLive = amplitudePopina[h] || { nb: 0, ca: 0 }
+    const popina = popinaLive.ca > 0 ? popinaLive : popinaDB
     return {
       heure: h + 'h',
       caUber: Math.round(uber.ca),
       nbUber: uber.nb,
-      caTotal: Math.round(uber.ca),
+      caPopina: Math.round(popina.ca),
+      nbPopina: popina.nb,
+      caTotal: Math.round(uber.ca + popina.ca),
     }
-  }).filter(h => h.caTotal > 0 || h.nbUber > 0)
+  }).filter(h => h.caUber > 0 || h.nbUber > 0 || h.caPopina > 0)
 
-  const maxAmplitude = Math.max(...amplitudeData.map(h => h.caTotal), 1)
-  const picHeure = amplitudeData.reduce((max, h) => h.caTotal > max.caTotal ? h : max, { caTotal: 0, heure: '—' })
+  const maxAmplitude = Math.max(...amplitudeData.map(h => Math.max(h.caUber, h.caPopina)), 1)
+  const picHeure = amplitudeData.reduce((max, h) => h.caTotal > max.caTotal ? h : max, { caTotal: 0, heure: '—', nbUber: 0, nbPopina: 0 })
 
   const popinaTop = (mix.top || []).map(p => ({ ...p, canal: p.canal === 'online' ? 'foxorder' : 'caisse' }))
   const fusionMap = {}
@@ -46,6 +65,7 @@ export default function MixClient({ mix, uberTop, uberParHeure, caUber, caRestau
   }
 
   const nbUberTotal = Object.values(uberParHeure).reduce((s, h) => s + h.nb, 0)
+  const popinaChargee = Object.keys(amplitudePopina).length > 0 || Object.keys(amplitudePopinaDB).length > 0
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4 max-w-md mx-auto pb-24">
@@ -91,6 +111,7 @@ export default function MixClient({ mix, uberTop, uberParHeure, caUber, caRestau
         ))}
       </div>
 
+      {/* AMPLITUDE */}
       {onglet === 'amplitude' && (
         <div className="space-y-3">
           {amplitudeData.length === 0 ? (
@@ -101,31 +122,61 @@ export default function MixClient({ mix, uberTop, uberParHeure, caUber, caRestau
           ) : (
             <>
               <div className="bg-blue-950/30 border border-blue-900/30 rounded-2xl p-4">
-                <p className="text-xs text-blue-400 uppercase tracking-wider mb-1">Pic d'activité Uber</p>
+                <p className="text-xs text-blue-400 uppercase tracking-wider mb-1">Pic d'activité</p>
                 <p className="text-2xl font-bold">{picHeure.heure}</p>
-                <p className="text-gray-400 text-sm">{fmt(picHeure.caTotal)} · {picHeure.nbUber} commandes</p>
+                <p className="text-gray-400 text-sm">{fmt(picHeure.caTotal)} · {picHeure.nbUber + picHeure.nbPopina} commandes</p>
               </div>
 
               <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4">
-                <p className="text-xs text-gray-400 uppercase tracking-wider mb-4">CA par heure — Uber Eats</p>
-                <div className="space-y-2">
+                <div className="flex justify-between items-center mb-4">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider">CA par heure</p>
+                  <div className="flex gap-3 text-xs text-gray-500">
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-600 inline-block"></span>Uber</span>
+                    {popinaChargee && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>Restaurant</span>}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
                   {amplitudeData.map(h => (
                     <div key={h.heure} className="flex items-center gap-3">
                       <span className="text-xs font-mono text-gray-500 w-8 flex-shrink-0">{h.heure}</span>
-                      <div className="flex-1 bg-gray-800 rounded-full h-5 relative overflow-hidden">
-                        <div className="h-5 rounded-full bg-green-600 transition-all"
-                          style={{ width: (h.caUber / maxAmplitude * 100) + '%' }}></div>
-                        <span className="absolute inset-0 flex items-center px-2 text-xs text-white font-medium">
-                          {h.caUber > 0 ? fmt(h.caUber) : ''}
-                        </span>
+                      <div className="flex-1 flex flex-col gap-1">
+                        <div className="bg-gray-800 rounded-full h-4 relative overflow-hidden">
+                          <div className="h-4 rounded-full bg-green-600 transition-all"
+                            style={{ width: (h.caUber / maxAmplitude * 100) + '%' }}></div>
+                          <span className="absolute inset-0 flex items-center px-2 text-xs text-white font-medium">
+                            {h.caUber > 0 ? fmt(h.caUber) : ''}
+                          </span>
+                        </div>
+                        {h.caPopina > 0 && (
+                          <div className="bg-gray-800 rounded-full h-4 relative overflow-hidden">
+                            <div className="h-4 rounded-full bg-blue-600 transition-all"
+                              style={{ width: (h.caPopina / maxAmplitude * 100) + '%' }}></div>
+                            <span className="absolute inset-0 flex items-center px-2 text-xs text-white font-medium">
+                              {fmt(h.caPopina)}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      <span className="text-xs text-gray-500 w-12 text-right flex-shrink-0">{h.nbUber} cmd</span>
+                      <span className="text-xs text-gray-500 w-12 text-right flex-shrink-0">
+                        {h.nbUber + h.nbPopina} cmd
+                      </span>
                     </div>
                   ))}
                 </div>
-                <div className="mt-4 pt-3 border-t border-gray-800 flex items-center gap-2 text-xs text-gray-500">
-                  <div className="w-2 h-2 rounded-full bg-green-600"></div>
-                  <span>Uber Eats uniquement · Données Popina à venir</span>
+
+                <div className="mt-4 pt-3 border-t border-gray-800">
+                  {popinaChargee ? (
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                      <span>Données Restaurant disponibles</span>
+                    </div>
+                  ) : (
+                    <button onClick={chargerAmplitudePopina} disabled={loadingPopina}
+                      className="w-full py-2 rounded-xl border border-gray-700 text-sm text-gray-400 hover:text-white hover:border-gray-500 transition disabled:opacity-40">
+                      {loadingPopina ? '⏳ Chargement Popina (~30s)...' : '+ Charger données Restaurant (Popina)'}
+                    </button>
+                  )}
                 </div>
               </div>
             </>
@@ -133,6 +184,7 @@ export default function MixClient({ mix, uberTop, uberParHeure, caUber, caRestau
         </div>
       )}
 
+      {/* CANAUX */}
       {onglet === 'canaux' && (
         <div className="space-y-3">
           <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4">
@@ -171,6 +223,7 @@ export default function MixClient({ mix, uberTop, uberParHeure, caUber, caRestau
         </div>
       )}
 
+      {/* PRODUITS */}
       {onglet === 'produits' && (
         <div className="space-y-3">
           <div className="flex gap-3 text-xs text-gray-500 px-1">

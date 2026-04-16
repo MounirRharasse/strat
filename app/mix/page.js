@@ -42,6 +42,22 @@ export default async function MixVentes({ searchParams }) {
   const caRestaurant = Math.round((mix.caTotal || 0) * 100) / 100
   const caTotal = caRestaurant + caUber
 
+  // Amplitude Popina depuis Supabase (calculée par le cron)
+  const { data: amplitudeDB } = await supabase
+    .from('amplitude_horaire')
+    .select('heure, nb_commandes, ca')
+    .eq('canal', 'popina')
+    .gte('date', since)
+    .lte('date', today)
+
+  const amplitudePopinaDB = {}
+  for (const row of (amplitudeDB || [])) {
+    const h = row.heure.toString().padStart(2, '0')
+    if (!amplitudePopinaDB[h]) amplitudePopinaDB[h] = { nb: 0, ca: 0 }
+    amplitudePopinaDB[h].nb += row.nb_commandes
+    amplitudePopinaDB[h].ca += parseFloat(row.ca)
+  }
+
   return (
     <MixClient
       mix={mix}
@@ -51,6 +67,7 @@ export default async function MixVentes({ searchParams }) {
       caRestaurant={caRestaurant}
       caTotal={caTotal}
       periode={periode}
+      amplitudePopinaDB={amplitudePopinaDB}
     />
   )
 }
