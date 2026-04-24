@@ -34,3 +34,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# strat - protections données et backups
+/strat-backups/
+strat-backups/
+*.csv
+*.sql
+!supabase/migrations/*.sql
+backup-*
+*-backup
+*-credentials*
+*-secrets*
+strat-context*.md
