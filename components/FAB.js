@@ -207,19 +207,20 @@ export default function FAB() {
     const montantTVA = Math.round((montantTTC - montantHT) * 100) / 100
 
     const res = await fetch('/api/entrees', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        date,
-        montant_ttc: montantTTC,
-        taux_tva: tva,
-        montant_ht: montantHT,
-        montant_tva: montantTVA,
-        source: categorieEntree,
-        categorie: CATEGORIES_ENTREE.find(c => c.val === categorieEntree)?.label || categorieEntree,
-        note
-      })
-    })
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    date,
+    montant_ttc: montantTTC,
+    taux_tva: tva,
+    montant_ht: montantHT,
+    montant_tva: montantTVA,
+    source: categorieEntree,
+    categorie: CATEGORIES_ENTREE.find(c => c.val === categorieEntree)?.label || categorieEntree,
+    nb_commandes: nbCommandes ? parseInt(nbCommandes, 10) : null,
+    note
+  })
+})
     setLoading(false)
     if (res.ok) { setSuccess(true); setTimeout(close, 1500) }
   }
