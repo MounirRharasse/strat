@@ -1,5 +1,8 @@
 import { supabase } from '@/lib/supabase'
 
+// TODO V1+ : déduire parametre_id depuis la session auth au lieu de hardcoder Krousty
+const PARAMETRE_ID_KROUSTY = '68f417f5-b3ea-4b8b-98ea-29b752076e8c'
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
   const since = searchParams.get('since')
@@ -18,7 +21,7 @@ export async function POST(request) {
   const body = await request.json()
   const { data, error } = await supabase
     .from('entrees')
-    .insert(body)
+    .insert({ ...body, parametre_id: PARAMETRE_ID_KROUSTY })
     .select()
     .single()
 
@@ -32,7 +35,11 @@ export async function DELETE(request) {
 
   if (!id) return Response.json({ error: 'id requis' }, { status: 400 })
 
-  const { error } = await supabase.from('entrees').delete().eq('id', id)
+  const { error } = await supabase
+    .from('entrees')
+    .delete()
+    .eq('id', id)
+    .eq('parametre_id', PARAMETRE_ID_KROUSTY)
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json({ success: true })
 }
@@ -60,6 +67,7 @@ export async function PATCH(request) {
       nb_commandes: parseInt(body.nb_commandes) || 0
     })
     .eq('id', id)
+    .eq('parametre_id', PARAMETRE_ID_KROUSTY)
     .select()
     .single()
 
