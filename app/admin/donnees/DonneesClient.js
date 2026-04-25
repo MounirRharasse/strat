@@ -4,6 +4,9 @@ import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
 
+// TODO V1+ : récupérer parametre_id depuis la session admin au lieu de hardcoder Krousty
+const PARAMETRE_ID_KROUSTY = '68f417f5-b3ea-4b8b-98ea-29b752076e8c'
+
 export default function DonneesClient({ data, total, onglet, page, limit }) {
   const router = useRouter()
   const [editRow, setEditRow] = useState(null)
@@ -29,7 +32,7 @@ export default function DonneesClient({ data, total, onglet, page, limit }) {
     await fetch(`/api/admin/donnees`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ table, id, data: editData })
+      body: JSON.stringify({ table, id, data: editData, parametre_id: PARAMETRE_ID_KROUSTY })
     })
     setSaving(false)
     setEditRow(null)
@@ -42,7 +45,7 @@ export default function DonneesClient({ data, total, onglet, page, limit }) {
     await fetch(`/api/admin/donnees`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ table, id })
+      body: JSON.stringify({ table, id, parametre_id: PARAMETRE_ID_KROUSTY })
     })
     router.refresh()
   }
