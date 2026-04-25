@@ -1,13 +1,29 @@
 import { supabase } from '@/lib/supabase'
 import * as XLSX from 'xlsx'
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function POST(request) {
   try {
     const formData = await request.formData()
+    const parametre_id = formData.get('parametre_id')
     const fichier = formData.get('fichier')
     const type = formData.get('type')
     const mappingRaw = formData.get('mapping')
     const mapping = mappingRaw ? JSON.parse(mappingRaw) : {}
+
+    if (!parametre_id || !UUID_REGEX.test(parametre_id)) {
+      return Response.json({ error: 'parametre_id requis et au format UUID' }, { status: 400 })
+    }
+
+    const { data: tenant } = await supabase
+      .from('parametres')
+      .select('id')
+      .eq('id', parametre_id)
+      .single()
+    if (!tenant) {
+      return Response.json({ error: `parametre_id introuvable: ${parametre_id}` }, { status: 400 })
+    }
 
     const buffer = await fichier.arrayBuffer()
     let rows = []
@@ -149,10 +165,12 @@ export async function POST(request) {
                   type === 'transactions' ? 'transactions' :
                   type === 'uber_orders' ? 'uber_orders' : 'entrees'
 
-    const upsertKey = type === 'historique_ca' ? 'date' : null
+    const upsertKey = type === 'historique_ca' ? 'parametre_id,date' : null
 
-    for (let i = 0; i < records.length; i += 100) {
-      const batch = records.slice(i, i + 100)
+    const recordsAvecTenant = records.map(r => ({ ...r, parametre_id }))
+
+    for (let i = 0; i < recordsAvecTenant.length; i += 100) {
+      const batch = recordsAvecTenant.slice(i, i + 100)
       const { error } = upsertKey
         ? await supabase.from(table).upsert(batch, { onConflict: upsertKey })
         : await supabase.from(table).insert(batch)

@@ -56,7 +56,7 @@ const TYPES = [
 
 export default function AdminImports() {
   const [clients, setClients] = useState([])
-  const [clientId, setClientId] = useState('')
+  const [parametreId, setParametreId] = useState('')
   const [type, setType] = useState('uber_orders')
   const [fichier, setFichier] = useState(null)
   const [colonnesFichier, setColonnesFichier] = useState([])
@@ -74,12 +74,12 @@ export default function AdminImports() {
 
   // Charger le mapping sauvegardé quand client+type changent
   useEffect(() => {
-    if (!clientId || !type) return
-    fetch(`/api/admin/mappings?parametre_id=${clientId}&type=${type}`)
+    if (!parametreId || !type) return
+    fetch(`/api/admin/mappings?parametre_id=${parametreId}&type=${type}`)
       .then(r => r.json())
       .then(d => { if (d.mapping) setMapping(d.mapping) })
       .catch(() => {})
-  }, [clientId, type])
+  }, [parametreId, type])
 
   // Reset quand le type change
   useEffect(() => {
@@ -136,11 +136,11 @@ export default function AdminImports() {
   }
 
   async function sauvegarderMapping() {
-    if (!clientId) return
+    if (!parametreId) return
     await fetch('/api/admin/mappings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ parametre_id: clientId, type, source: fichier?.name || 'unknown', mapping })
+      body: JSON.stringify({ parametre_id: parametreId, type, source: fichier?.name || 'unknown', mapping })
     })
   }
 
@@ -153,7 +153,7 @@ export default function AdminImports() {
     formData.append('fichier', fichier)
     formData.append('type', type)
     formData.append('mapping', JSON.stringify(mapping))
-    if (clientId) formData.append('clientId', clientId)
+    if (parametreId) formData.append('parametre_id', parametreId)
     try {
       const res = await fetch('/api/admin/imports', { method: 'POST', body: formData })
       const data = await res.json()
@@ -202,7 +202,7 @@ export default function AdminImports() {
             <>
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
                 <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">① Client</p>
-                <select value={clientId} onChange={e => setClientId(e.target.value)}
+                <select value={parametreId} onChange={e => setParametreId(e.target.value)}
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none">
                   <option value="">Sélectionner un client...</option>
                   {clients.map(c => (
