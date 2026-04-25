@@ -1,6 +1,9 @@
 import { getAllOrders, getAllReports } from '@/lib/popina'
 import { supabase } from '@/lib/supabase'
 
+// TODO V1+ : boucler sur tous les parametres actifs au lieu de hardcoder Krousty
+const PARAMETRE_ID_KROUSTY = '68f417f5-b3ea-4b8b-98ea-29b752076e8c'
+
 export async function GET(request) {
   // Sécurité — vérifier le token Vercel Cron
   const authHeader = request.headers.get('authorization')
@@ -36,6 +39,7 @@ export async function GET(request) {
 
     // Stocker amplitude dans Supabase
     const amplitudeRecords = Object.entries(parHeure).map(([heure, data]) => ({
+      parametre_id: PARAMETRE_ID_KROUSTY,
       date,
       heure: parseInt(heure),
       nb_commandes: data.nb,
@@ -46,7 +50,7 @@ export async function GET(request) {
     if (amplitudeRecords.length > 0) {
       const { error } = await supabase
         .from('amplitude_horaire')
-        .upsert(amplitudeRecords, { onConflict: 'date,heure,canal' })
+        .upsert(amplitudeRecords, { onConflict: 'parametre_id,date,heure,canal' })
       if (error) results.steps.push({ step: 'amplitude', error: error.message })
       else results.steps.push({ step: 'amplitude', nb: amplitudeRecords.length })
     }
@@ -74,6 +78,7 @@ export async function GET(request) {
       const { error } = await supabase
         .from('historique_ca')
         .upsert({
+          parametre_id: PARAMETRE_ID_KROUSTY,
           date,
           ca_brut: Math.round(caBrut * 100) / 100,
           ca_ht: Math.round(caHT * 100) / 100,
@@ -82,7 +87,7 @@ export async function GET(request) {
           tpa: Math.round(tpa * 100) / 100,
           tr: Math.round(tr * 100) / 100,
           nb_commandes: nbCommandes,
-        }, { onConflict: 'date' })
+        }, { onConflict: 'parametre_id,date' })
 
       if (error) results.steps.push({ step: 'historique_ca', error: error.message })
       else results.steps.push({ step: 'historique_ca', date, caBrut })
