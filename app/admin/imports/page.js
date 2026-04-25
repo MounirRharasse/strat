@@ -75,7 +75,7 @@ export default function AdminImports() {
   // Charger le mapping sauvegardé quand client+type changent
   useEffect(() => {
     if (!clientId || !type) return
-    fetch(`/api/admin/mappings?clientId=${clientId}&type=${type}`)
+    fetch(`/api/admin/mappings?parametre_id=${clientId}&type=${type}`)
       .then(r => r.json())
       .then(d => { if (d.mapping) setMapping(d.mapping) })
       .catch(() => {})
@@ -140,7 +140,7 @@ export default function AdminImports() {
     await fetch('/api/admin/mappings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId, type, source: fichier?.name || 'unknown', mapping })
+      body: JSON.stringify({ parametre_id: clientId, type, source: fichier?.name || 'unknown', mapping })
     })
   }
 
