@@ -1,5 +1,8 @@
 import { supabase } from '@/lib/supabase'
 
+// TODO V1+ : déduire parametre_id depuis la session auth au lieu de hardcoder Krousty
+const PARAMETRE_ID_KROUSTY = '68f417f5-b3ea-4b8b-98ea-29b752076e8c'
+
 function normalise(text) {
   return text
     .toLowerCase()
@@ -45,6 +48,7 @@ export async function POST(request) {
     .from('fournisseurs')
     .select('*')
     .ilike('nom', `%${fournisseur_nom}%`)
+    .eq('parametre_id', PARAMETRE_ID_KROUSTY)
     .single()
 
   let fournisseur_id
@@ -60,6 +64,7 @@ export async function POST(request) {
         categorie_pl
       })
       .eq('id', existing.id)
+      .eq('parametre_id', PARAMETRE_ID_KROUSTY)
     fournisseur_id = existing.id
   } else {
     const { data: nouveau } = await supabase
@@ -71,7 +76,8 @@ export async function POST(request) {
         sous_categorie,
         categorie_pl,
         total_depense: montant_ttc,
-        nb_transactions: 1
+        nb_transactions: 1,
+        parametre_id: PARAMETRE_ID_KROUSTY
       })
       .select()
       .single()
@@ -90,7 +96,8 @@ export async function POST(request) {
       fournisseur_nom,
       sous_categorie,
       categorie_pl,
-      note
+      note,
+      parametre_id: PARAMETRE_ID_KROUSTY
     })
     .select()
     .single()
