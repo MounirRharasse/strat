@@ -1,8 +1,17 @@
 import { supabase } from '@/lib/supabase'
+import { getParametreIdFromSession } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import ParamClient from './ParamClient'
 
 export default async function Parametres() {
-  const { data } = await supabase.from('parametres').select('*').single()
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    redirect('/login')
+  }
+
+  const { data } = await supabase.from('parametres').select('*').eq('id', parametre_id).single()
 
   const params = data || {
     nom_restaurant: 'Krousty Sabaidi Montpellier Castelnau',

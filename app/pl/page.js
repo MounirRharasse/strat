@@ -1,8 +1,17 @@
 import { getAllReports } from '@/lib/popina'
 import { supabase } from '@/lib/supabase'
+import { getParametreIdFromSession } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import PLClient from './PLClient'
 
 export default async function PL({ searchParams }) {
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    redirect('/login')
+  }
+
   const now = new Date()
   const periode = searchParams?.periode || 'mtd'
   const today = now.toISOString().split('T')[0]
@@ -21,7 +30,7 @@ export default async function PL({ searchParams }) {
     supabase.from('transactions').select('*').gte('date', since).lte('date', today),
     supabase.from('historique_ca').select('uber, nb_commandes').gte('date', since).lte('date', today),
     supabase.from('entrees').select('*').gte('date', since).lte('date', today).eq('source', 'uber_eats'),
-    supabase.from('parametres').select('*').single()
+    supabase.from('parametres').select('*').eq('id', parametre_id).single()
   ])
 
   // CA Popina

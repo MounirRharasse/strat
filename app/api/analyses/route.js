@@ -1,5 +1,6 @@
 import { getAllReports, getAllOrders } from '@/lib/popina'
 import { supabase } from '@/lib/supabase'
+import { getParametreIdFromSession } from '@/lib/auth'
 
 function repartitionPaiements(payments) {
   const r = { borne: 0, cb: 0, especes: 0, tr: 0, avoir: 0 }
@@ -16,6 +17,13 @@ function repartitionPaiements(payments) {
 }
 
 export async function GET(request) {
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    return Response.json({ error: 'Session invalide ou expirée' }, { status: 401 })
+  }
+
   const { searchParams } = new URL(request.url)
   const since = searchParams.get('since')
   const until = searchParams.get('until')
@@ -30,7 +38,7 @@ export async function GET(request) {
       supabase.from('transactions').select('*').gte('date', since).lte('date', until),
       supabase.from('historique_ca').select('*').gte('date', since).lte('date', until),
       supabase.from('entrees').select('*').gte('date', since).lte('date', until).eq('source', 'uber_eats'),
-      supabase.from('parametres').select('*').single()
+      supabase.from('parametres').select('*').eq('id', parametre_id).single()
     ])
     const tauxCB = (parametres?.taux_commission_cb ?? 1.5) / 100
     const tauxTR = (parametres?.taux_commission_tr ?? 4.0) / 100

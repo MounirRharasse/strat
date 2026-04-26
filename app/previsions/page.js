@@ -1,8 +1,17 @@
 import { getAllReports, getAllOrders } from '@/lib/popina'
 import { supabase } from '@/lib/supabase'
+import { getParametreIdFromSession } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import PreviClient from './PreviClient'
 
 export default async function Previsions() {
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    redirect('/login')
+  }
+
   const now = new Date()
   const today = now.toISOString().split('T')[0]
   const firstDay = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0]
@@ -18,7 +27,7 @@ export default async function Previsions() {
     supabase.from('transactions').select('*').gte('date', firstDay).lte('date', today),
     supabase.from('historique_ca').select('*').gte('date', firstDay).lte('date', today),
     supabase.from('entrees').select('*').gte('date', firstDay).lte('date', today).eq('source', 'uber_eats'),
-    supabase.from('parametres').select('*').single()
+    supabase.from('parametres').select('*').eq('id', parametre_id).single()
   ])
 
   // CA Popina

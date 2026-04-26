@@ -1,8 +1,17 @@
 import { getDailyKPIs, getWeeklyData } from '@/lib/popina'
 import { supabase } from '@/lib/supabase'
+import { getParametreIdFromSession } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import DashboardClient from './DashboardClient'
 
 export default async function Dashboard() {
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    redirect('/login')
+  }
+
   const now = new Date()
   const today = now.toISOString().split('T')[0]
   const yesterday = new Date(now)
@@ -15,7 +24,7 @@ export default async function Dashboard() {
     getDailyKPIs(yesterdayStr),
     getWeeklyData(),
     supabase.from('transactions').select('*').gte('date', firstDayMonth),
-    supabase.from('parametres').select('*').single()
+    supabase.from('parametres').select('*').eq('id', parametre_id).single()
   ])
 
   const kpis = kpisToday.hasData ? kpisToday : kpisYesterday
