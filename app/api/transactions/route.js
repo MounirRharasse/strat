@@ -1,7 +1,5 @@
 import { supabase } from '@/lib/supabase'
-
-// TODO V1+ : déduire parametre_id depuis la session auth au lieu de hardcoder Krousty
-const PARAMETRE_ID_KROUSTY = '68f417f5-b3ea-4b8b-98ea-29b752076e8c'
+import { getParametreIdFromSession } from '@/lib/auth'
 
 function normalise(text) {
   return text
@@ -12,6 +10,13 @@ function normalise(text) {
 }
 
 export async function GET(request) {
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    return Response.json({ error: 'Session invalide ou expirée' }, { status: 401 })
+  }
+
   const { searchParams } = new URL(request.url)
   const q = searchParams.get('q') || ''
 
@@ -21,6 +26,7 @@ export async function GET(request) {
     .from('fournisseurs')
     .select('*')
     .ilike('nom', `%${q}%`)
+    .eq('parametre_id', parametre_id)
     .order('nb_transactions', { ascending: false })
     .limit(5)
 
@@ -29,6 +35,13 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    return Response.json({ error: 'Session invalide ou expirée' }, { status: 401 })
+  }
+
   const body = await request.json()
   const {
     date,
@@ -48,7 +61,7 @@ export async function POST(request) {
     .from('fournisseurs')
     .select('*')
     .ilike('nom', `%${fournisseur_nom}%`)
-    .eq('parametre_id', PARAMETRE_ID_KROUSTY)
+    .eq('parametre_id', parametre_id)
     .single()
 
   let fournisseur_id
@@ -64,7 +77,7 @@ export async function POST(request) {
         categorie_pl
       })
       .eq('id', existing.id)
-      .eq('parametre_id', PARAMETRE_ID_KROUSTY)
+      .eq('parametre_id', parametre_id)
     fournisseur_id = existing.id
   } else {
     const { data: nouveau } = await supabase
@@ -77,7 +90,7 @@ export async function POST(request) {
         categorie_pl,
         total_depense: montant_ttc,
         nb_transactions: 1,
-        parametre_id: PARAMETRE_ID_KROUSTY
+        parametre_id
       })
       .select()
       .single()
@@ -97,7 +110,7 @@ export async function POST(request) {
       sous_categorie,
       categorie_pl,
       note,
-      parametre_id: PARAMETRE_ID_KROUSTY
+      parametre_id
     })
     .select()
     .single()

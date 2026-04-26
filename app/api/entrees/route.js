@@ -1,14 +1,19 @@
 import { supabase } from '@/lib/supabase'
-
-// TODO V1+ : déduire parametre_id depuis la session auth au lieu de hardcoder Krousty
-const PARAMETRE_ID_KROUSTY = '68f417f5-b3ea-4b8b-98ea-29b752076e8c'
+import { getParametreIdFromSession } from '@/lib/auth'
 
 export async function GET(request) {
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    return Response.json({ error: 'Session invalide ou expirée' }, { status: 401 })
+  }
+
   const { searchParams } = new URL(request.url)
   const since = searchParams.get('since')
   const until = searchParams.get('until')
 
-  let query = supabase.from('entrees').select('*').order('date', { ascending: false })
+  let query = supabase.from('entrees').select('*').eq('parametre_id', parametre_id).order('date', { ascending: false })
   if (since) query = query.gte('date', since)
   if (until) query = query.lte('date', until)
 
@@ -18,10 +23,17 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    return Response.json({ error: 'Session invalide ou expirée' }, { status: 401 })
+  }
+
   const body = await request.json()
   const { data, error } = await supabase
     .from('entrees')
-    .insert({ ...body, parametre_id: PARAMETRE_ID_KROUSTY })
+    .insert({ ...body, parametre_id })
     .select()
     .single()
 
@@ -30,6 +42,13 @@ export async function POST(request) {
 }
 
 export async function DELETE(request) {
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    return Response.json({ error: 'Session invalide ou expirée' }, { status: 401 })
+  }
+
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')
 
@@ -39,12 +58,19 @@ export async function DELETE(request) {
     .from('entrees')
     .delete()
     .eq('id', id)
-    .eq('parametre_id', PARAMETRE_ID_KROUSTY)
+    .eq('parametre_id', parametre_id)
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json({ success: true })
 }
 
 export async function PATCH(request) {
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    return Response.json({ error: 'Session invalide ou expirée' }, { status: 401 })
+  }
+
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')
   const body = await request.json()
@@ -67,7 +93,7 @@ export async function PATCH(request) {
       nb_commandes: parseInt(body.nb_commandes) || 0
     })
     .eq('id', id)
-    .eq('parametre_id', PARAMETRE_ID_KROUSTY)
+    .eq('parametre_id', parametre_id)
     .select()
     .single()
 
