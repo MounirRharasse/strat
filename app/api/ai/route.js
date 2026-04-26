@@ -94,7 +94,9 @@ Dis clairement si l'objectif est atteignable. Mentionne la prochaine échéance 
                 if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
                   controller.enqueue(encoder.encode(parsed.delta.text))
                 }
-              } catch {}
+              } catch (e) {
+                console.error('[ai/route] JSON.parse échoué sur chunk SSE:', e.message, '· chunk:', data.slice(0, 500))
+              }
             }
           }
         }
