@@ -68,6 +68,8 @@ export async function POST(request) {
       'Frais Divers': 'frais_divers',
       'Autres frais fixes': 'autres_charges',
       'Autres charges': 'autres_charges',
+      'Impots sur les bénéfices': 'autres_charges',
+      'Impôts sur les bénéfices': 'autres_charges',
     }
 
     const parseDate = (val) => {
