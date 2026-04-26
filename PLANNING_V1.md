@@ -1,8 +1,8 @@
 # Strat — Planning V1 (8 semaines)
 
-_Version 1.0 — avril 2026_
+_Version 1.1 — avril 2026_
 
-Ce document fixe le plan d'exécution pour livrer la V1 de Strat. Il est opérationnel, pas stratégique. Pour les décisions produit, voir `STRAT_CADRAGE.md`.
+Ce document fixe le plan d'exécution pour livrer la V1 de Strat. Il est opérationnel, pas stratégique. Pour les décisions produit, voir `STRAT_CADRAGE.md`. Pour les décisions architecturales, voir `STRAT_ARCHITECTURE.md`.
 
 **Démarrage** : semaine du 28 avril 2026
 **Livraison V1 testable** : semaine du 23 juin 2026 (~8 semaines)
@@ -44,153 +44,143 @@ Accéder au SQL Editor, faire un SELECT simple, comprendre un résultat, inspect
 
 ---
 
-## Phase 0 — Semaine 0 : Sécurisation et setup (3-5 jours)
+## Phase 0 — Sécurisation et setup
 
-**Objectif** : sécuriser l'existant et poser l'infrastructure de travail avant toute ligne de code nouvelle.
+**Statut : ✅ Réalisée** (jours 1-2 du sprint, 25-26 avril 2026)
 
-### Tâches
+Toutes les tâches de sécurité ont été effectuées :
+- Credentials régénérés (NEXTAUTH_SECRET, CRON_SECRET, ADMIN_PASSWORD, clé Popina)
+- 2FA activée sur Supabase
+- Backups CSV des 8 tables créés
+- Claude Code installé et configuré
+- `STRAT_CADRAGE.md`, `STRAT_IA.md`, `PLANNING_V1.md` commités à la racine
 
-**Sécurité (non-négociable, à faire en priorité)**
-
-- [ ] Régénérer le mot de passe `krousty2026` partout où il est utilisé
-- [ ] Régénérer `NEXTAUTH_SECRET` (nouveau random 64+ caractères)
-- [ ] Régénérer `CRON_SECRET`
-- [ ] Révoquer la clé Popina actuelle, en générer une nouvelle
-- [ ] Vérifier que TOUTES les env vars sont dans Vercel et pas dans le code
-- [ ] Purger l'historique Git des credentials exposés (BFG Repo Cleaner ou git filter-repo)
-- [ ] Force push après purge
-- [ ] Vérifier que le repo GitHub est privé
-- [ ] Activer 2FA sur GitHub, Supabase, Vercel, Anthropic, Popina
-
-**Setup outil de dev**
-
-- [ ] Installer Claude Code (`npm install -g @anthropic-ai/claude-code`)
-- [ ] Configurer avec ton repo local `~/strat`
-- [ ] Créer une branche `v1-refactor` sur git
-- [ ] Première prise en main : poser une question simple à Claude Code sur le code existant
-
-**Documents de référence**
-
-- [ ] Commiter `STRAT_CADRAGE.md` à la racine du repo
-- [ ] Commiter `STRAT_IA.md` à la racine du repo
-- [ ] Commiter ce `PLANNING_V1.md` à la racine du repo
-- [ ] Relire le cadrage à tête reposée, noter questions/incohérences
-
-**Compétence 1 — Console navigateur**
-
-- [ ] 30 min avec Claude : ouvrir F12 sur strat-b8et.vercel.app, faire une action qui déclenche une erreur, lire le message, comprendre
-- [ ] Se créer un réflexe : dès qu'il y a un problème, ouvrir F12 avant de poser la question
-
-### Critère de sortie Phase 0
-
-Tous les items ci-dessus cochés. Credentials sécurisés confirmés. Claude Code fonctionne. Tu sais ouvrir la console navigateur.
+Sprint multi-tenant déjà entamé en parallèle de la Phase 0 :
+- Migration `parametres` étendue (timezone, jours_ouverture, slug)
+- Migration `parametre_id NOT NULL` sur 8 tables
+- 6 routes API patchées + 2 clients React migrés
+- Helper de session `lib/auth.js` créé
+- 6 lectures `from('parametres').single()` filtrées par tenant
+- Performance Popina parallélisée (30s → 14s sur /previsions)
+- `loading.js` ajouté sur /previsions
 
 ---
 
-## Phase 1 — Semaines 1 à 3 : Les fondations (72h total)
+## Phase 1 — Refondation architecturale (Semaines 1 à 4 — 96h total) [REFONDUE v1.1]
 
-**Objectif** : reconstruire le socle multi-tenant proprement. Sans ça, rien ne tient.
+**Objectif** : poser les fondations propres pour qu'un nouveau client puisse être accueilli sans bricoler. Cette phase remplace l'ancienne Phase 1 v1.0 — restructurée le 26 avril 2026 suite au débat à 3 voix architectural (cf. `STRAT_ARCHITECTURE.md`).
 
-### Semaine 1 — Multi-tenant et sources (24h)
+### Semaine 1 — Périodes + Design Sources (24h)
 
-**Lundi-Mardi : Migration multi-tenant**
+**Objectif S1** : livrer la lib `lib/periods.js` et le composant `<PeriodFilter />` opérationnels, et avoir designé proprement le schéma `sources` + `ventes_par_source` (sans le coder).
 
-- [ ] Écrire la migration SQL (création table `restaurants` ou extension de `parametres`, ajout `parametre_id` partout)
-- [ ] Script de backfill : toutes les données existantes → parametre_id de Mounir
-- [ ] Tester en local d'abord (pas en prod)
-- [ ] Appliquer en prod via Supabase SQL Editor (**faire un backup avant**)
-- [ ] Vérifier que tout marche après migration
+**Lundi-Mardi : `lib/periods.js` (lib pure)** (8h)
+- Installer `date-fns` et `date-fns-tz`
+- Créer la lib avec les 9 filtres comme fonctions pures (timezone en argument, cf. Décision #4)
+  - `getAujourdhui({ timezone })`
+  - `getHier({ timezone })`
+  - `getCetteSemaine({ timezone })`
+  - `getSemaineDerniere({ timezone })`
+  - `getCeMois({ timezone })`
+  - `getMoisDernier({ timezone })`
+  - `getDerniers30Jours({ timezone })`
+  - `getCetteAnnee({ timezone })`
+  - `getPeriodePersonnalisee({ since, until, timezone })`
+- Implémenter `periodePrecedenteAEgaleDuree(periode)` pour les comparaisons
+- Tests Vitest sur les bordures :
+  - DST mars/octobre (changement d'heure)
+  - 1er janvier à minuit France
+  - Années bissextiles
+  - Périodes vides (pas d'activité)
+- **Bug DST cron à fixer en parallèle** : remplacer `(getUTCHours() + 2) % 24` par calcul timezone propre
 
-**Mercredi : RLS Supabase**
+**Mercredi : Composant `<PeriodFilter />` (3 profils)** (4h)
+- Composant React avec prop `profil` ('pilotage' | 'journal' | 'comptable')
+- 3 sets de filtres affichés selon profil (cf. `STRAT_CADRAGE.md` §13)
+- Intégration de la lib `lib/periods.js`
+- Affichage du sous-titre discret avec dates réelles ("21 - 24 avr · 4 jours")
+- Toggle "Comparer à la période précédente"
+- `<HorizonFilter />` séparé pour Prévisions (Fin de semaine, Fin de mois, Fin d'année)
 
-- [ ] Activer RLS sur toutes les tables
-- [ ] Policies `SELECT` / `INSERT` / `UPDATE` / `DELETE` avec filter `parametre_id`
-- [ ] Tester qu'un utilisateur non connecté ne voit rien
-- [ ] Tester qu'un utilisateur connecté ne voit QUE ses données
+**Jeudi-Vendredi : Design Sources EN PARALLÈLE** (8h)
+- Schéma SQL des tables `sources` et `ventes_par_source` sur papier
+- Validation avec Claude Code et Claude conversationnel
+- Migration SQL écrite (mais **pas exécutée** en S1)
+- Backfill plan détaillé : comment migrer `historique_ca.uber` + `entrees.source='uber_eats'` vers `ventes_par_source`
+- Plan de cutover : ordre de migration des écritures (cron → admin → FAB)
+- **Pas de code applicatif Sources cette semaine**
 
-**Jeudi : Table `sources`**
+**Bilan vendredi** : décider si on continue parallèle en S2-3 ou si on prolonge S1 sur Périodes uniquement (cf. garde-fou Décision #3).
 
-- [ ] Création table `sources` selon schéma cadrage
-- [ ] Seed initial pour Mounir : source Restaurant + source Uber Eats
-- [ ] Migration : colonne `uber` de `historique_ca` → table `ventes_par_source`
+**Compétence 2 (en marchant)** : navigation code pendant la S1.
 
-**Vendredi : Refactor FAB pour sources dynamiques**
+### Semaines 2-3 — Code Sources + Calculs (48h)
 
-- [ ] Le FAB charge les sources via `/api/sources` au lieu de la constante hardcodée
-- [ ] Plus de mention "Foxorder" nulle part
-- [ ] Test : créer une entrée pour chaque source
+**Objectif S2-3** : table `sources` + `ventes_par_source` opérationnelles, `historique_ca` déprécié, calculs métier centralisés dans `lib/calculs/`.
 
-**Compétence 2 (en marchant)** : pendant cette semaine, tu apprends à naviguer entre `components/`, `app/api/`, `lib/` et à localiser où vit chaque morceau.
+**Code Sources (priorité 1, ~24h)**
 
-### Semaine 2 — Filtres et timezone (24h)
+Semaine 2 :
+- Créer table `sources` + seed Krousty (Restaurant + Uber Eats)
+- Créer table `ventes_par_source` (vide)
+- Backfill idempotent depuis `historique_ca.uber` et `entrees.source='uber_eats'`
+- Tests SQL : vérifier que les totaux post-migration matchent les totaux pré-migration
 
-**Lundi-Mardi : `lib/periods.js`**
+Semaine 3 :
+- Adapter le cron pour écrire dans `ventes_par_source`
+- Migrer chaque page une par une pour lire depuis `ventes_par_source` :
+  - `/dashboard` (Mon Business)
+  - `/pl` (P&L)
+  - `/previsions`
+  - `/api/analyses`
+  - `/api/historique`
+- Suppression définitive de `historique_ca.uber` puis de la table `historique_ca` à terme
+- Adapter `/admin/donnees`, `/admin/imports` pour les nouvelles tables
 
-- [ ] Installer `date-fns` et `date-fns-tz`
-- [ ] Créer la lib centralisée avec les 9 filtres
-- [ ] Chaque fonction prend un timezone en paramètre (défaut Europe/Paris)
-- [ ] Tests unitaires sur chaque filtre
-- [ ] Remplacer tous les `new Date()` et `Date.now()` éparpillés par cette lib
+**Code Calculs (priorité 2, ~24h)**
 
-**Mercredi-Jeudi : Refactor UI filtres**
-
-- [ ] Composant `<PeriodFilter />` réutilisable avec les 9 options
-- [ ] Affichage du sous-titre discret avec les dates réelles
-- [ ] Toggle "Comparer à la période précédente"
-- [ ] Logique de comparaison intelligente (même durée écoulée)
-
-**Vendredi : Toggle Restaurant/Plateformes dans Détail CA**
-
-- [ ] Dans `DrillDown.js`, ajouter le state `canal`
-- [ ] Toggle au-dessus du graphe
-- [ ] Recalcul des valeurs selon canal sélectionné
-- [ ] Graphe qui se met à jour
-
-### Semaine 3 — Paramètres et inventaire (24h)
-
-**Lundi-Mercredi : Écran Paramètres complet**
-
-Sections à livrer :
-- [ ] Infos générales (nom resto, fuseau horaire)
-- [ ] Sources (CRUD : ajouter/modifier/désactiver)
-- [ ] Objectifs (CA mensuel, ticket moyen min, food cost cible/max)
-- [ ] Jours d'ouverture (toggle lundi→dimanche)
-- [ ] Commissions par source
-- [ ] Fournisseurs récurrents (CRUD)
-
-**Jeudi : Inventaire simple**
-
-- [ ] Table `inventaires` + route API
-- [ ] Écran "Inventaires" avec historique
-- [ ] Formulaire de saisie minimaliste (date + valeur + note)
-- [ ] Calcul food cost ajusté quand 2 inventaires encadrent une période
-- [ ] UI "food cost estimé" vs "food cost exact"
-
-**Vendredi : Polish et tests bout en bout**
-
-- [ ] Test complet : créer un nouveau compte, onboard un resto, saisir des données, voir les KPIs
-- [ ] Corriger les bugs UI trouvés
-- [ ] Valider que la migration multi-tenant ne casse rien
+En parallèle de Sources sur S2-3 :
+- Créer `lib/calculs/ca.js` (fonctions pures : calculerCA, calculerCAParCanal, etc.)
+- Créer `lib/calculs/depenses.js` (calculerCharges, calculerFoodCost, etc.)
+- Créer `lib/calculs/pl.js` (calculerEBE, calculerMarges, etc.)
+- Créer `lib/calculs/commissions.js`
+- Extraire les calculs depuis `pl/page.js` (le plus complet) vers les fonctions pures
+- Faire converger les 4 lieux dupliqués sur la même fonction
+- Tests Vitest obligatoires sur chaque fonction de calcul
 
 **Compétence 3 (en fin de semaine 3)** : 20 min sur Supabase SQL Editor, apprendre à faire `SELECT * FROM transactions WHERE ...` pour inspecter.
 
+### Semaine 4 — Récupération données (24h)
+
+**Objectif S4** : centraliser tous les helpers Supabase dans `lib/data/`. Plus aucune page ne fait de SELECT direct.
+
+- Créer `lib/data/transactions.js` (`getTransactions(parametre_id, since, until, options)`, etc.)
+- Créer `lib/data/ventes.js` (`getVentesParJour`, `getVentesParSource`)
+- Créer `lib/data/parametres.js` (`getParametresFor`, `getTimezoneFor`)
+- Migration page par page pour utiliser ces helpers
+- Refactor de `lib/popina.js` pour ne garder que les helpers data (sortir `getDailyKPIs` qui mélange data et calcul, vers `lib/calculs/`)
+- Test bout en bout : un nouveau client peut être créé, onboardé, voir ses KPIs
+
 ### Critère de sortie Phase 1
 
-- Le multi-tenant fonctionne (RLS testée)
-- Les sources sont dynamiques (fini "uber" hardcodé)
-- Les 9 filtres de période marchent avec la bonne timezone
-- Le toggle Restaurant/Plateformes est fonctionnel
-- L'écran Paramètres permet tout ce que le client doit configurer
-- L'inventaire simple marche
-- Tu sais ouvrir la console, naviguer le code, faire du SQL basique
+- ✅ `lib/periods.js` couvre les 9 filtres avec timezone, tests verts
+- ✅ `<PeriodFilter />` fonctionne avec 3 profils, intégré sur 5 pages
+- ✅ `<HorizonFilter />` intégré sur Prévisions
+- ✅ Table `sources` + `ventes_par_source` opérationnelles, `historique_ca.uber` supprimé
+- ✅ Calculs métier centralisés dans `lib/calculs/`, plus de duplication 4×
+- ✅ Helpers `lib/data/` utilisés par toutes les pages
+- ✅ L'app est entièrement multi-tenant fonctionnelle (un nouveau client peut être ajouté sans toucher au code)
+- ✅ Bug Uber Historique (`/api/analyses:84`) résolu par construction (pas de duplication possible)
+- ✅ Bug DST cron fixé
+- ✅ Vocabulaire UI proscrit éliminé (MTD, YTD, 1S, 1M, 6M, 1A)
 
 ---
 
-## Phase 2 — Semaines 4 à 5 : Analyses et données (32h total)
+## Phase 2 — Semaines 5 à 6 : Analyses et données (32h total)
 
 **Objectif** : les 4 vues d'analyse croisée et l'import CSV universel.
 
-### Semaine 4 — Les 4 vues d'Analyses (16h)
+### Semaine 5 — Les 4 vues d'Analyses (16h)
 
 **Lundi : Route API d'agrégation**
 
@@ -199,7 +189,7 @@ Sections à livrer :
 - [ ] `/api/analyses/categories?since=X&until=Y` : GROUP BY sous_categorie
 - [ ] `/api/analyses/sources?since=X&until=Y` : GROUP BY source
 
-Toutes ces routes filtrent par `parametre_id` via RLS.
+Toutes ces routes filtrent par `parametre_id` via RLS et utilisent `lib/data/` (livré en S4).
 
 **Mardi : UI tableau custom simple**
 
@@ -212,14 +202,14 @@ Toutes ces routes filtrent par `parametre_id` via RLS.
 
 - [ ] Page `/analyses` avec onglets : Fournisseurs / Personnel / Catégories / Sources
 - [ ] Chaque onglet utilise `<AnalyseTable />` avec sa route API
-- [ ] `<PeriodFilter />` en haut pour choisir la période
+- [ ] `<PeriodFilter profil="pilotage" />` en haut pour choisir la période
 
 **Vendredi : Préparation intégration IA**
 
 - [ ] Placeholder icône ✨ sur chaque ligne du tableau (non fonctionnel pour l'instant)
 - [ ] Tests avec tes vraies données
 
-### Semaine 5 — Import CSV intelligent (16h)
+### Semaine 6 — Import CSV intelligent (16h)
 
 **Lundi-Mardi : Couche 1 — Parser universel**
 
@@ -254,11 +244,11 @@ Toutes ces routes filtrent par `parametre_id` via RLS.
 
 ---
 
-## Phase 3 — Semaines 6 à 8 : IA et finalisation (72h total)
+## Phase 3 — Semaines 7 à 8 : IA et finalisation (48h total)
 
 **Objectif** : les 4 features IA + onboarding + préparation lancement.
 
-### Semaine 6 — Infrastructure IA + Feature 1 (24h)
+### Semaine 7 — Infrastructure IA + Features 1-2 (24h)
 
 **Lundi : Setup infra IA**
 
@@ -278,31 +268,23 @@ Toutes ces routes filtrent par `parametre_id` via RLS.
 - [ ] Icône ✨ sur chaque ligne des tableaux d'analyses
 - [ ] Explication spécifique par ligne (ex : "Transgourmet +48% ce mois...")
 
-**Vendredi : Pédagogie et tests**
-
-- [ ] Aide contextuelle "?" sur chaque indicateur (qu'est-ce que, comment, pourquoi)
-- [ ] Test qualité IA : 20 explications générées, check manuel du ton et de la justesse
-- [ ] Ajustement prompts si nécessaire
-
-### Semaine 7 — Features IA 2 et 3 (24h)
-
-**Lundi-Mardi : Feature 2 — Inbox intelligente**
+**Vendredi : Feature 2 — Inbox intelligente**
 
 - [ ] Moteur de détection en code classique (dérives food cost, anomalies CA, etc.)
 - [ ] Cron nocturne qui émet des signaux dans `ia_signaux`
 - [ ] Contextualiseur IA qui rédige le message à partir du signal
 - [ ] Écran "Notifications" avec les messages pushés
 
-**Mercredi-Vendredi : Feature 3 — Brief du lundi**
+### Semaine 8 — Features IA 3-4 + Onboarding (24h)
+
+**Lundi-Mardi : Feature 3 — Brief du lundi**
 
 - [ ] Cron lundi 7h du matin
 - [ ] Sonnet avec function calling pour accéder aux données
 - [ ] Structure du brief (constats + vigilance + action + astuce pédagogique)
-- [ ] Affichage dans l'inbox + email via Resend (création compte Resend)
+- [ ] Affichage dans l'inbox + email via Resend
 
-### Semaine 8 — Feature IA 4 + Onboarding + Préparation lancement (24h)
-
-**Lundi-Mercredi : Feature 4 — Chat conversationnel**
+**Mercredi : Feature 4 — Chat conversationnel**
 
 - [ ] Interface chat simple (pas besoin de WebSocket, simple POST/response)
 - [ ] Sonnet avec function calling pour récupérer les données
@@ -391,13 +373,19 @@ Si une semaine entière est décalée :
 2. Identifier pourquoi (sous-estimation ? apprentissage ? outil ?)
 3. Ajuster le reste du planning si besoin
 
+### Bilan obligatoire en fin de Semaine 1 (NOUVEAU v1.1)
+
+Décider si le parallélisme "Périodes + design Sources" tient ou si on doit revenir à un séquentiel pur (cf. `STRAT_ARCHITECTURE.md` Décision #3, garde-fous).
+
 ### Ce qui ne doit PAS arriver
 
 - Coder un truc hors cadrage parce que "ce serait cool"
-- Sauter la phase de sécurisation (Phase 0) pour gagner du temps
+- Sauter la phase de sécurisation (Phase 0) pour gagner du temps — ✅ déjà faite
 - Vendre à un client avant la fin de la Phase 3
 - Copier-coller du code sans comprendre ce qu'il fait
 - Déployer en prod un vendredi soir
+- **Coder Sources avant que son design ait été validé** (Phase 1 S1) [NOUVEAU v1.1]
+- **Mélanger code Périodes et code Sources** sur les mêmes commits (séparation des sujets) [NOUVEAU v1.1]
 
 ---
 
@@ -422,6 +410,13 @@ Quand tu demandes quelque chose à Claude Code ou à moi dans ce chat, toujours 
 3. Ce que tu as déjà essayé
 4. Le code concerné (coller, pas décrire)
 5. L'erreur exacte (coller, pas décrire)
+
+---
+
+## Historique
+
+- **v1.0 (avril 2026)** : planning V1 initial sur 8 semaines (Phase 0 sécu + Phase 1 fondations + Phase 2 analyses + Phase 3 IA)
+- **v1.1 (26 avril 2026)** : Phase 1 entièrement refondue suite au débat architectural du 26 avril (cf. `STRAT_ARCHITECTURE.md`). Nouvelle séquence : S1 Périodes + design Sources, S2-3 Code Sources + Calculs, S4 Récup données. Phase 0 marquée comme réalisée. Bilan obligatoire en fin de S1 ajouté. 2 nouveaux anti-patterns ajoutés.
 
 ---
 

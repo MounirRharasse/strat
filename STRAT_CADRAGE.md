@@ -1,12 +1,16 @@
 # Strat — Document de cadrage produit
 
-_Version 1.6 — avril 2026_
+_Version 1.7 — avril 2026_
 
 Ce document fixe les décisions structurantes de Strat. Il sert de référence pour arbitrer les choix produit et techniques. En cas de doute sur une feature, un refactor ou une demande client, relire ce document **avant** de coder.
 
 Documents liés :
+- `STRAT_ARCHITECTURE.md` — décisions architecturales structurantes (NOUVEAU v1.7)
 - `STRAT_IA.md` — stratégie IA détaillée
 - `STRAT_IA_FEATURE1_PLAN.md` — plan d'implémentation Feature IA n°1
+- `IRRITANTS_UX_V1.md` — capture des retours utilisateurs (NOUVEAU v1.7)
+
+**Hiérarchie en cas de conflit** : `STRAT_CADRAGE.md` > `STRAT_ARCHITECTURE.md` > code (le produit dirige la technique).
 
 ---
 
@@ -65,6 +69,11 @@ Hors cible V1 : chaînes 5+ points de vente, gastronomie étoilée, hors France,
 
 Base Supabase unique, isolation par `parametre_id` + RLS. Modèle "base par client" rejeté.
 
+**Architecture des sources de revenus (NOUVEAU v1.7)** : la décision archi #1 du 26 avril 2026 (cf. `STRAT_ARCHITECTURE.md`) introduit :
+- Table `sources` (paramétrable par tenant) : Restaurant, Uber Eats, Deliveroo, etc.
+- Table `ventes_par_source` (source de vérité unique) qui remplace `historique_ca.uber` et `entrees.source='uber_eats'`
+- Suppression de `historique_ca` après migration
+
 ---
 
 ## 5. Architecture Canal / Paiement
@@ -91,7 +100,7 @@ Plan comptable FR (14 catégories), TVA FR (0, 5.5, 10, 20), modes de paiement, 
 ## 8. Charte terminologique
 
 ### Proscrits
-Foxorder, TPA, MTD, YTD, Drill-down, KPI (UI), Dashboard (UI), Connecteur (UI), location_id (UI), Caisse+Foxorder, Panier moyen, 1S/1M/6M/1A.
+Foxorder, TPA, MTD, YTD, Drill-down, KPI (UI), Dashboard (UI), Connecteur (UI), Caisse+Foxorder, Panier moyen, 1S/1M/6M/1A.
 
 ### Officiel
 
@@ -176,12 +185,26 @@ Icône ✨ sur chaque ligne → explication IA contextuelle.
 ### Règles UX
 Période réelle affichée en sous-titre discret ("21 - 24 avr · 4 jours"). Toggle comparaison optionnel. Logique de comparaison intelligente (même durée écoulée).
 
+### Profils de filtres par page (NOUVEAU v1.7)
+
+Suite au débat architectural du 26 avril 2026 (cf. `STRAT_ARCHITECTURE.md` Décision #2), les 9 filtres ne sont **pas tous affichés sur toutes les pages**. 3 profils sont définis selon la logique métier de la page :
+
+| Profil | Pages | Filtres affichés |
+|---|---|---|
+| **pilotage** | Mon Business, Mix ventes, Analyses | 8 filtres (tous sauf Aujourd'hui) |
+| **journal** | Journal | les 9 filtres |
+| **comptable** | P&L | 7 filtres (tous sauf Aujourd'hui et Hier) |
+
+**Cas particulier — Prévisions** : composant séparé `<HorizonFilter />` avec horizons futurs (Fin de semaine, Fin de mois, Fin d'année). Hors scope `<PeriodFilter />`.
+
+**Discipline** : pas de configuration libre par page. Une nouvelle page doit s'inscrire dans un profil existant ou justifier la création d'un 4e (avec mise à jour de `STRAT_ARCHITECTURE.md`).
+
 ### Timezone
-Toujours en fuseau du restaurant (défaut Europe/Paris, paramétrable). Lib centrale `lib/periods.js` avec `date-fns-tz`.
+Toujours en fuseau du restaurant (défaut Europe/Paris, paramétrable). Lib centrale `lib/periods.js` avec `date-fns-tz`. **Décision #4 du 26 avril 2026** : timezone passée en argument explicite (lib pure, pas de wrapper).
 
 ---
 
-## 14. Inventaire simple (NOUVEAU v1.6)
+## 14. Inventaire simple
 
 ### Contexte
 
@@ -275,13 +298,15 @@ Premium unique à ~59€/mois, pas de Standard. Objectif : 10 premiers clients. 
 - Import CSV avec mapping intelligent
 - Connecteur Popina natif
 
-**Filtres (section 13)** — 9 filtres, comparaisons, timezone
+**Filtres (section 13)** — 9 filtres, comparaisons, timezone, **3 profils par page (NOUVEAU v1.7)**
 
 **Analyses (section 12)** — 4 vues en tableau
 
 **Inventaire simple (section 14)** — saisie minimale + food cost ajusté + pédagogie
 
 **IA (section 11)** — 4 features
+
+**Architecture (NOUVEAU v1.7)** — refactor structurant en 4 couches (Périodes, Sources, Calculs, Récup données). Cf. `STRAT_ARCHITECTURE.md`.
 
 **Éducation transversale (pilier 2)** : présente dans toutes les features
 - Aide contextuelle sur chaque indicateur (qu'est-ce que, comment, pourquoi)
@@ -331,6 +356,10 @@ Test : **"Si deux clients sont en désaccord, est-ce que l'un a tort ?"**
 - **Culpabiliser l'utilisateur** qui ne suit pas les bonnes pratiques (Strat éduque, ne moralise pas)
 - **Coder un module d'inventaire détaillé par référence** (validé hors scope V1 et V2 par défaut)
 - **Confondre "ce que Mounir veut pour Krousty" et "ce que Strat doit être"** (relecture cadrage obligatoire)
+- **Configurer librement les filtres page par page** (5 conventions différentes émergent — utiliser les 3 profils de `<PeriodFilter />`) [NOUVEAU v1.7]
+- **Mélanger PeriodFilter et HorizonFilter** sur une même page (logique passé vs futur) [NOUVEAU v1.7]
+- **Garder `historique_ca` en cohabitation avec `ventes_par_source`** (Option B rejetée le 26 avril 2026 — reproduit le pattern de bugs Uber Historique) [NOUVEAU v1.7]
+- **Wrapper haut niveau systématique sur lib/periods.js** (la lib reste pure, le caller résout la timezone explicitement) [NOUVEAU v1.7]
 
 ---
 
@@ -344,9 +373,12 @@ Test : **"Si deux clients sont en désaccord, est-ce que l'un a tort ?"**
 - Liste 10 prochains prospects + caisses
 - Email (Brief) : Resend, Postmark, autre ?
 - Facturation : mensuel, annuel, les deux ?
-- Lib dates : `date-fns-tz` (reco) ou `luxon` ?
 - **Placement UI de la feature Inventaire** : Paramètres ? Analyses ? Section dédiée ?
 - **Contenu pédagogique** : rédaction interne ou avec aide IA ?
+
+### Tranchées en v1.7
+
+- ~~Lib dates : `date-fns-tz` (reco) ou `luxon` ?~~ → tranché : `date-fns-tz` (cf. `STRAT_ARCHITECTURE.md` Décision #4)
 
 ---
 
@@ -366,6 +398,7 @@ Ordre d'application pour toute nouvelle feature :
 10. **Analyse** : nouvelle vue ou vue existante + filtre ?
 11. **Filtre période** : logique claire, sans mélange
 12. **Timezone** : toujours fuseau du restaurant
+13. **Architecture** : alignée avec les 4 décisions de `STRAT_ARCHITECTURE.md` ? [NOUVEAU v1.7]
 
 ---
 
@@ -378,6 +411,7 @@ Ordre d'application pour toute nouvelle feature :
 - **v1.4** : analyses croisées (4 vues), Premium unique au lancement
 - **v1.5** : filtres de période (9 filtres, comparaisons, timezone)
 - **v1.6** : 3 piliers produit (Pilote / Éduque / Conseille), feature Inventaire simple, dimension éducative transversale
+- **v1.7 (26 avril 2026)** : décisions architecturales structurantes — création de `STRAT_ARCHITECTURE.md` (suppression `historique_ca`, 3 profils PeriodFilter, ordre roadmap archi, timezone par injection). Création de `IRRITANTS_UX_V1.md`. Mise à jour anti-patterns. Suppression d'une décision en attente (`date-fns-tz` tranchée).
 
 ---
 
