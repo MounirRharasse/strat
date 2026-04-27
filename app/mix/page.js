@@ -1,14 +1,24 @@
 import { getMixVentes } from '@/lib/popina'
 import { supabase } from '@/lib/supabase'
+import { getParametreIdFromSession } from '@/lib/auth'
+import { getPeriodeFromFiltreId } from '@/lib/periods'
+import { redirect } from 'next/navigation'
 import MixClient from './MixClient'
 
 export default async function MixVentes({ searchParams }) {
-  const today = new Date().toISOString().split('T')[0]
-  const periode = searchParams?.periode || 'week'
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    redirect('/login')
+  }
 
-  let since = today
-  if (periode === 'week') since = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
-  if (periode === 'month') since = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
+  const { data: parametres } = await supabase.from('parametres').select('*').eq('id', parametre_id).single()
+  const timezone = parametres?.timezone || 'Europe/Paris'
+
+  const periode = searchParams?.periode || 'ce-mois'
+  const { since, until } = getPeriodeFromFiltreId(periode, { timezone })
+  const today = until
 
   const mix = await getMixVentes(since, today)
 

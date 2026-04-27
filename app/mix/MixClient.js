@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import PeriodFilter from '@/components/PeriodFilter'
 
 export default function MixClient({ mix, uberTop, uberParHeure, caUber, caRestaurant, caTotal, periode, amplitudePopinaDB }) {
   const [onglet, setOnglet] = useState('amplitude')
@@ -85,17 +86,8 @@ export default function MixClient({ mix, uberTop, uberParHeure, caUber, caRestau
         </div>
       </div>
 
-      <div className="flex gap-2 mb-4">
-        {[
-          { val: 'today', label: 'Auj.' },
-          { val: 'week', label: '7 jours' },
-          { val: 'month', label: '30 jours' },
-        ].map(p => (
-          <Link key={p.val} href={`/mix?periode=${p.val}`}
-            className={"flex-1 text-center text-xs py-2 rounded-xl border " + (periode === p.val ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>
-            {p.label}
-          </Link>
-        ))}
+      <div className="mb-4">
+        <PeriodFilter profil="pilotage" basePath="/mix" filtreActif={periode} />
       </div>
 
       <div className="flex gap-2 mb-4">

@@ -1,17 +1,27 @@
 import { supabase } from '@/lib/supabase'
 import { getDailyKPIs } from '@/lib/popina'
+import { getParametreIdFromSession } from '@/lib/auth'
+import { getAujourdhui, getHier, getPeriodeFromFiltreId } from '@/lib/periods'
+import { redirect } from 'next/navigation'
 import JournalClient from './JournalClient'
 
 export default async function Journal({ searchParams }) {
-  const now = new Date()
-  const today = now.toISOString().split('T')[0]
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-  const periode = searchParams?.periode || 'today'
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    redirect('/login')
+  }
+
+  const { data: parametres } = await supabase.from('parametres').select('*').eq('id', parametre_id).single()
+  const timezone = parametres?.timezone || 'Europe/Paris'
+
+  const today = getAujourdhui({ timezone }).until
+  const yesterday = getHier({ timezone }).until
+  const periode = searchParams?.periode || 'aujourdhui'
   const type = searchParams?.type || 'all'
 
-  let since = today
-  if (periode === 'week') since = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
-  if (periode === 'month') since = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
+  const { since } = getPeriodeFromFiltreId(periode, { timezone })
 
   const [{ data: transactions }, { data: entrees }, { data: historique }, kpisToday, kpisYesterday] = await Promise.all([
     supabase.from('transactions').select('*').gte('date', since).order('date', { ascending: false }).order('created_at', { ascending: false }),

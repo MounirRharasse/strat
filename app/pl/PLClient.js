@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import PeriodFilter from '@/components/PeriodFilter'
 
 export default function PLClient({ data, periode }) {
   const [onglet, setOnglet] = useState('resume')
@@ -119,10 +120,8 @@ export default function PLClient({ data, periode }) {
 
       <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4 mb-4">
         <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">Periode</p>
-        <div className="flex gap-2 mb-3">
-          <Link href="/pl?periode=7j" className={"flex-1 text-center text-xs py-2 rounded-xl border " + (periode === '7j' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-800 text-gray-400 border-gray-700')}>7 jours</Link>
-          <Link href="/pl?periode=mtd" className={"flex-1 text-center text-xs py-2 rounded-xl border " + (periode === 'mtd' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-800 text-gray-400 border-gray-700')}>MTD</Link>
-          <Link href="/pl?periode=ytd" className={"flex-1 text-center text-xs py-2 rounded-xl border " + (periode === 'ytd' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-800 text-gray-400 border-gray-700')}>YTD</Link>
+        <div className="mb-3">
+          <PeriodFilter profil="comptable" basePath="/pl" filtreActif={periode} />
         </div>
         <div className="flex gap-2">
           <div className="flex-1 bg-gray-800 rounded-xl p-3">

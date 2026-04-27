@@ -1,6 +1,7 @@
 import { getAllReports } from '@/lib/popina'
 import { supabase } from '@/lib/supabase'
 import { getParametreIdFromSession } from '@/lib/auth'
+import { getPeriodeFromFiltreId } from '@/lib/periods'
 import { redirect } from 'next/navigation'
 import PLClient from './PLClient'
 
@@ -12,25 +13,20 @@ export default async function PL({ searchParams }) {
     redirect('/login')
   }
 
-  const now = new Date()
-  const periode = searchParams?.periode || 'mtd'
-  const today = now.toISOString().split('T')[0]
-  const firstDayMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0]
-  const firstDayYear = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0]
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
+  const { data: parametres } = await supabase.from('parametres').select('*').eq('id', parametre_id).single()
+  const timezone = parametres?.timezone || 'Europe/Paris'
 
-  let since = firstDayMonth
-  if (periode === '7j') since = weekAgo
-  if (periode === 'ytd') since = firstDayYear
+  const periode = searchParams?.periode || 'ce-mois'
+  const { since, until } = getPeriodeFromFiltreId(periode, { timezone })
+  const today = until
 
   const toEuros = (c) => Math.round(c) / 100
 
-  const [reports, { data: transactions }, { data: historique }, { data: entreesUber }, { data: parametres }] = await Promise.all([
+  const [reports, { data: transactions }, { data: historique }, { data: entreesUber }] = await Promise.all([
     getAllReports(since, today),
     supabase.from('transactions').select('*').gte('date', since).lte('date', today),
     supabase.from('historique_ca').select('uber, nb_commandes').gte('date', since).lte('date', today),
-    supabase.from('entrees').select('*').gte('date', since).lte('date', today).eq('source', 'uber_eats'),
-    supabase.from('parametres').select('*').eq('id', parametre_id).single()
+    supabase.from('entrees').select('*').gte('date', since).lte('date', today).eq('source', 'uber_eats')
   ])
 
   // CA Popina

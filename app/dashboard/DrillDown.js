@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 
 export default function DrillDown({ type, data, params, onClose }) {
-  const [tf, setTf] = useState('Hier')
+  const [tf, setTf] = useState('hier')
   const [historique, setHistorique] = useState([])
   const [kpis, setKpis] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -39,18 +39,18 @@ export default function DrillDown({ type, data, params, onClose }) {
   const seuilAtteint = caJourRef >= seuilJournalier
   const seuilEcart = caJourRef - seuilJournalier
   const objectifMensuel = objectifCA
-const objectifPeriode = tf === 'Hier' ? objectifJour
-  : tf === '1S' ? objectifJour * 7
-  : tf === '1M' ? objectifMensuel
-  : tf === '6M' ? objectifMensuel * 6
-  : tf === '1A' ? objectifMensuel * 12
+const objectifPeriode = tf === 'hier' ? objectifJour
+  : tf === '7-derniers-jours' ? objectifJour * 7
+  : tf === 'ce-mois' ? objectifMensuel
+  : tf === '6-derniers-mois' ? objectifMensuel * 6
+  : tf === '12-derniers-mois' ? objectifMensuel * 12
   : objectifMensuel * 12
 
-const labelObjectif = tf === 'Hier' ? 'Taux objectif jour'
-  : tf === '1S' ? 'Taux objectif semaine'
-  : tf === '1M' ? 'Taux objectif mois'
-  : tf === '6M' ? 'Taux objectif 6 mois'
-  : tf === '1A' ? 'Taux objectif annuel'
+const labelObjectif = tf === 'hier' ? 'Taux objectif jour'
+  : tf === '7-derniers-jours' ? 'Taux objectif semaine'
+  : tf === 'ce-mois' ? 'Taux objectif mois'
+  : tf === '6-derniers-mois' ? 'Taux objectif 6 mois'
+  : tf === '12-derniers-mois' ? 'Taux objectif annuel'
   : 'Taux objectif annuel'
 
 const tauxAtteinte = objectifPeriode > 0 ? Math.round(caBrut / objectifPeriode * 100) : 0
@@ -59,15 +59,17 @@ const resteAFaire = Math.max(objectifPeriode - caBrut, 0)
   function getSince(t) {
   const now = new Date()
   const today = now.toISOString().split('T')[0]
-  if (t === 'Hier') {
+  if (t === 'hier') {
   const d = new Date()
   d.setDate(d.getDate() - 1)
   return d.toISOString().split('T')[0]
 }
-  if (t === '1S') return new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
-  if (t === '1M') return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0]
-  if (t === '6M') return new Date(Date.UTC(now.getFullYear(), now.getMonth() - 6, 1)).toISOString().split('T')[0]
-  if (t === '1A') return new Date(Date.UTC(now.getFullYear() - 1, now.getMonth(), 1)).toISOString().split('T')[0]
+  if (t === '7-derniers-jours') return new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
+  if (t === 'ce-mois') return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0]
+  if (t === '6-derniers-mois') return new Date(Date.UTC(now.getFullYear(), now.getMonth() - 6, 1)).toISOString().split('T')[0]
+  if (t === '12-derniers-mois') return new Date(Date.UTC(now.getFullYear() - 1, now.getMonth(), 1)).toISOString().split('T')[0]
+  // TODO V1+ : remplacer le hardcode '2024-01-01' (début historique Krousty) par
+  // une lecture dynamique depuis parametres ou la 1ère date présente en base.
   return '2024-01-01'
 }
 
@@ -77,7 +79,7 @@ const resteAFaire = Math.max(objectifPeriode - caBrut, 0)
   const now = new Date()
   const yesterday = new Date(now)
   yesterday.setDate(now.getDate() - 1)
-  const until = tf === 'Hier'
+  const until = tf === 'hier'
     ? yesterday.toISOString().split('T')[0]
     : now.toISOString().split('T')[0]
 
@@ -176,10 +178,17 @@ const resteAFaire = Math.max(objectifPeriode - caBrut, 0)
 
   const TFButtons = () => (
     <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-      {['Hier', '1S', '1M', '6M', '1A', 'Tout'].map(t => (
-        <button key={t} onClick={() => setTf(t)}
-          className={"flex-shrink-0 px-3 py-1.5 rounded-xl text-xs border transition " + (tf === t ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-800 text-gray-400 border-gray-700')}>
-          {t}
+      {[
+        { value: 'hier', label: 'Hier' },
+        { value: '7-derniers-jours', label: '7 derniers jours' },
+        { value: 'ce-mois', label: 'Ce mois' },
+        { value: '6-derniers-mois', label: '6 derniers mois' },
+        { value: '12-derniers-mois', label: '12 derniers mois' },
+        { value: 'tout', label: "Tout l'historique" },
+      ].map(({ value, label }) => (
+        <button key={value} onClick={() => setTf(value)}
+          className={"flex-shrink-0 px-3 py-1.5 rounded-xl text-xs border transition " + (tf === value ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-800 text-gray-400 border-gray-700')}>
+          {label}
         </button>
       ))}
     </div>

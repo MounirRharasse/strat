@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import PeriodFilter from '@/components/PeriodFilter'
 
 export default function JournalClient({ transactions, entrees, historique, kpis, today, yesterday, periode, type }) {
   const [localEntrees, setLocalEntrees] = useState(entrees)
@@ -166,20 +167,18 @@ export default function JournalClient({ transactions, entrees, historique, kpis,
         </div>
       </div>
 
-      <div className="flex gap-2 mb-2">
-        <a href="/journal?periode=today&type=all" className={"flex-1 text-center text-xs py-2 rounded-xl border " + (periode === 'today' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Auj.</a>
-        <a href="/journal?periode=week&type=all" className={"flex-1 text-center text-xs py-2 rounded-xl border " + (periode === 'week' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>7 jours</a>
-        <a href="/journal?periode=month&type=all" className={"flex-1 text-center text-xs py-2 rounded-xl border " + (periode === 'month' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>30 jours</a>
+      <div className="mb-2">
+        <PeriodFilter profil="journal" basePath="/journal" filtreActif={periode} />
       </div>
 
       <div className="flex gap-2 mb-4">
-        <a href={"/journal?periode=" + periode + "&type=all"} className={"flex-1 text-center text-xs py-2 rounded-xl border " + (type === 'all' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Tout</a>
-        <a href={"/journal?periode=" + periode + "&type=entrees"} className={"flex-1 text-center text-xs py-2 rounded-xl border " + (type === 'entrees' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Entrees</a>
-        <a href={"/journal?periode=" + periode + "&type=depenses"} className={"flex-1 text-center text-xs py-2 rounded-xl border " + (type === 'depenses' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Depenses</a>
+        <Link href={"/journal?periode=" + periode + "&type=all"} className={"flex-1 text-center text-xs py-2 rounded-xl border " + (type === 'all' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Tout</Link>
+        <Link href={"/journal?periode=" + periode + "&type=entrees"} className={"flex-1 text-center text-xs py-2 rounded-xl border " + (type === 'entrees' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Entrées</Link>
+        <Link href={"/journal?periode=" + periode + "&type=depenses"} className={"flex-1 text-center text-xs py-2 rounded-xl border " + (type === 'depenses' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Dépenses</Link>
       </div>
 
       {/* AUJOURD'HUI */}
-      {periode === 'today' && (
+      {periode === 'aujourdhui' && (
         <div className="mb-4">
           <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
 
@@ -238,7 +237,7 @@ export default function JournalClient({ transactions, entrees, historique, kpis,
       )}
 
       {/* JOURS PRECEDENTS */}
-      {periode !== 'today' && (
+      {periode !== 'aujourdhui' && (
         <div>
           {showEntrees && (historique || []).filter(h => h.uber > 0).length > 0 && (
             <div className="mb-4">
