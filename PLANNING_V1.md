@@ -5,7 +5,7 @@ _Version 1.1 — avril 2026_
 Ce document fixe le plan d'exécution pour livrer la V1 de Strat. Il est opérationnel, pas stratégique. Pour les décisions produit, voir `STRAT_CADRAGE.md`. Pour les décisions architecturales, voir `STRAT_ARCHITECTURE.md`.
 
 **Démarrage** : semaine du 28 avril 2026
-**Livraison V1 testable** : semaine du 23 juin 2026 (~8 semaines)
+**Livraison V1 testable** : semaine du 23 juin 2026
 **Beta avec 2-3 clients** : semaine du 30 juin 2026
 **Lancement commercial public (10 clients)** : septembre 2026
 
@@ -33,13 +33,13 @@ Ce document fixe le plan d'exécution pour livrer la V1 de Strat. Il est opérat
 
 Ces compétences sont non-négociables. Étalées sur les 2 premières semaines, pas de cours en amont.
 
-**Compétence 1 — Console navigateur (30 min, une fois)**
+**Compétence 1 — Console navigateur (une fois)**
 Ouvrir F12, onglet Console, lire et comprendre un message d'erreur, le copier proprement pour partager.
 
-**Compétence 2 — Navigation code (au fil du dev, 2-3 sessions)**
+**Compétence 2 — Navigation code (au fil du dev)**
 Savoir localiser un bug : FAB ? route API ? base de données ? UI ? Comprendre la structure du projet Next.js.
 
-**Compétence 3 — SQL basique dans Supabase (20 min, une fois)**
+**Compétence 3 — SQL basique dans Supabase (une fois)**
 Accéder au SQL Editor, faire un SELECT simple, comprendre un résultat, inspecter une table.
 
 ---
@@ -66,16 +66,14 @@ Sprint multi-tenant déjà entamé en parallèle de la Phase 0 :
 
 ---
 
-## Phase 1 — Refondation architecturale (Semaines 1 à 4 — 96h total) [REFONDUE v1.1]
+## Phase 1 — Refondation architecturale (Semaines 1 à 4) [REFONDUE v1.1]
 
 **Objectif** : poser les fondations propres pour qu'un nouveau client puisse être accueilli sans bricoler. Cette phase remplace l'ancienne Phase 1 v1.0 — restructurée le 26 avril 2026 suite au débat à 3 voix architectural (cf. `STRAT_ARCHITECTURE.md`).
 
-### Semaine 1 — Périodes + Design Sources (24h)
-
+### Semaine 1 — Périodes + Design Sources
 **Objectif S1** : livrer la lib `lib/periods.js` et le composant `<PeriodFilter />` opérationnels, et avoir designé proprement le schéma `sources` + `ventes_par_source` (sans le coder).
 
-**Lundi-Mardi : `lib/periods.js` (lib pure)** (8h)
-- Installer `date-fns` et `date-fns-tz`
+**Lundi-Mardi : `lib/periods.js` (lib pure)**- Installer `date-fns` et `date-fns-tz`
 - Créer la lib avec les 9 filtres comme fonctions pures (timezone en argument, cf. Décision #4)
   - `getAujourdhui({ timezone })`
   - `getHier({ timezone })`
@@ -94,16 +92,14 @@ Sprint multi-tenant déjà entamé en parallèle de la Phase 0 :
   - Périodes vides (pas d'activité)
 - **Bug DST cron à fixer en parallèle** : remplacer `(getUTCHours() + 2) % 24` par calcul timezone propre
 
-**Mercredi : Composant `<PeriodFilter />` (3 profils)** (4h)
-- Composant React avec prop `profil` ('pilotage' | 'journal' | 'comptable')
+**Mercredi : Composant `<PeriodFilter />` (3 profils)**- Composant React avec prop `profil` ('pilotage' | 'journal' | 'comptable')
 - 3 sets de filtres affichés selon profil (cf. `STRAT_CADRAGE.md` §13)
 - Intégration de la lib `lib/periods.js`
 - Affichage du sous-titre discret avec dates réelles ("21 - 24 avr · 4 jours")
 - Toggle "Comparer à la période précédente"
 - `<HorizonFilter />` séparé pour Prévisions (Fin de semaine, Fin de mois, Fin d'année)
 
-**Jeudi-Vendredi : Design Sources EN PARALLÈLE** (8h)
-- Schéma SQL des tables `sources` et `ventes_par_source` sur papier
+**Jeudi-Vendredi : Design Sources EN PARALLÈLE**- Schéma SQL des tables `sources` et `ventes_par_source` sur papier
 - Validation avec Claude Code et Claude conversationnel
 - Migration SQL écrite (mais **pas exécutée** en S1)
 - Backfill plan détaillé : comment migrer `historique_ca.uber` + `entrees.source='uber_eats'` vers `ventes_par_source`
@@ -114,11 +110,10 @@ Sprint multi-tenant déjà entamé en parallèle de la Phase 0 :
 
 **Compétence 2 (en marchant)** : navigation code pendant la S1.
 
-### Semaines 2-3 — Code Sources + Calculs (48h)
-
+### Semaines 2-3 — Code Sources + Calculs
 **Objectif S2-3** : table `sources` + `ventes_par_source` opérationnelles, `historique_ca` déprécié, calculs métier centralisés dans `lib/calculs/`.
 
-**Code Sources (priorité 1, ~24h)**
+**Code Sources (priorité 1)**
 
 Semaine 2 :
 - Créer table `sources` + seed Krousty (Restaurant + Uber Eats)
@@ -137,7 +132,41 @@ Semaine 3 :
 - Suppression définitive de `historique_ca.uber` puis de la table `historique_ca` à terme
 - Adapter `/admin/donnees`, `/admin/imports` pour les nouvelles tables
 
-**Code Calculs (priorité 2, ~24h)**
+### Garde-fous opérationnels migration Sources
+
+**Backfill idempotent + dry-run** :
+- Avant la vraie migration, exécuter le script de backfill sur une copie de prod (snapshot Supabase)
+- Vérifier que les totaux post-backfill matchent les totaux pré-backfill (CA brut Krousty avant = CA Krousty après)
+- Le script doit pouvoir être rejoué sans créer de doublons (idempotence vérifiée)
+
+**Stratégie dual-write** :
+- Le cron écrit simultanément dans historique_ca (legacy) ET ventes_par_source (nouveau) pendant 3 jours minimum
+- Pendant cette période, comparaison automatique des totaux des 2 modèles (alerter si divergence)
+- Cutover : suppression de l'écriture dans historique_ca uniquement après 3 jours sans divergence
+
+**Lecture seule sur /admin/donnees pendant la migration** :
+- Bandeau "Migration en cours, édition désactivée temporairement"
+- Bouton de modification grisé
+- Réactivation post-cutover
+
+### Garde-fou S2-3 — Ordre intelligent Calculs/Sources
+
+Pour éviter le double-refactor, l'ordre des extractions de calculs doit être :
+
+**Phase A (peut commencer en parallèle de Sources)** :
+- `calculerFoodCost` (depuis transactions, indépendant de Sources)
+- `calculerEBE` (depuis transactions, indépendant de Sources)
+- `calculerCharges par catégorie` (depuis transactions, indépendant de Sources)
+- `calculerTicketMoyen` (peut attendre Sources OU être codé en utilisant l'ancienne API)
+
+**Phase B (APRÈS la migration Sources)** :
+- `calculerCA` brut/HT (consomme `ventes_par_source`)
+- `calculerCAParCanal` (consomme `ventes_par_source`)
+- `calculerCommissions` (consomme `ventes_par_source` + `parametres`)
+
+Cette séquence évite de réécrire les calculs CA deux fois.
+
+**Code Calculs (priorité 2)**
 
 En parallèle de Sources sur S2-3 :
 - Créer `lib/calculs/ca.js` (fonctions pures : calculerCA, calculerCAParCanal, etc.)
@@ -148,10 +177,9 @@ En parallèle de Sources sur S2-3 :
 - Faire converger les 4 lieux dupliqués sur la même fonction
 - Tests Vitest obligatoires sur chaque fonction de calcul
 
-**Compétence 3 (en fin de semaine 3)** : 20 min sur Supabase SQL Editor, apprendre à faire `SELECT * FROM transactions WHERE ...` pour inspecter.
+**Compétence 3 (en fin de semaine 3)** : sur Supabase SQL Editor, apprendre à faire `SELECT * FROM transactions WHERE ...` pour inspecter.
 
-### Semaine 4 — Récupération données (24h)
-
+### Semaine 4 — Récupération données
 **Objectif S4** : centraliser tous les helpers Supabase dans `lib/data/`. Plus aucune page ne fait de SELECT direct.
 
 - Créer `lib/data/transactions.js` (`getTransactions(parametre_id, since, until, options)`, etc.)
@@ -176,12 +204,10 @@ En parallèle de Sources sur S2-3 :
 
 ---
 
-## Phase 2 — Semaines 5 à 6 : Analyses et données (32h total)
-
+## Phase 2 — Semaines 5 à 6 : Analyses et données
 **Objectif** : les 4 vues d'analyse croisée et l'import CSV universel.
 
-### Semaine 5 — Les 4 vues d'Analyses (16h)
-
+### Semaine 5 — Les 4 vues d'Analyses
 **Lundi : Route API d'agrégation**
 
 - [ ] `/api/analyses/fournisseurs?since=X&until=Y` : GROUP BY fournisseur_nom
@@ -209,8 +235,7 @@ Toutes ces routes filtrent par `parametre_id` via RLS et utilisent `lib/data/` (
 - [ ] Placeholder icône ✨ sur chaque ligne du tableau (non fonctionnel pour l'instant)
 - [ ] Tests avec tes vraies données
 
-### Semaine 6 — Import CSV intelligent (16h)
-
+### Semaine 6 — Import CSV intelligent
 **Lundi-Mardi : Couche 1 — Parser universel**
 
 - [ ] Installation des libs nécessaires (`papaparse`, `chardet`, `xlsx`)
@@ -244,12 +269,11 @@ Toutes ces routes filtrent par `parametre_id` via RLS et utilisent `lib/data/` (
 
 ---
 
-## Phase 3 — Semaines 7 à 8 : IA et finalisation (48h total)
+## Phase 3 — Semaines 7 à 8 : IA et finalisation
 
 **Objectif** : les 4 features IA + onboarding + préparation lancement.
 
-### Semaine 7 — Infrastructure IA + Features 1-2 (24h)
-
+### Semaine 7 — Infrastructure IA + Features 1-2
 **Lundi : Setup infra IA**
 
 - [ ] Tables `ia_signaux`, `ia_explications_cache`, `ia_usage`, `ia_memoire` (voir STRAT_IA.md)
@@ -275,8 +299,7 @@ Toutes ces routes filtrent par `parametre_id` via RLS et utilisent `lib/data/` (
 - [ ] Contextualiseur IA qui rédige le message à partir du signal
 - [ ] Écran "Notifications" avec les messages pushés
 
-### Semaine 8 — Features IA 3-4 + Onboarding (24h)
-
+### Semaine 8 — Features IA 3-4 + Onboarding
 **Lundi-Mardi : Feature 3 — Brief du lundi**
 
 - [ ] Cron lundi 7h du matin
@@ -326,7 +349,7 @@ Toutes ces routes filtrent par `parametre_id` via RLS et utilisent `lib/data/` (
 - [ ] Identifier 3 restaurateurs dans ton réseau proche (connaissance personnelle)
 - [ ] Les rencontrer individuellement (pas en groupe)
 - [ ] Présenter Strat comme beta avec tarif préférentiel à vie
-- [ ] Onboarder chacun avec accompagnement personnalisé (2-3h par client)
+- [ ] Onboarder chacun avec accompagnement personnalisé
 - [ ] Debrief hebdo avec eux (qu'est-ce qui marche, qu'est-ce qui bloque)
 - [ ] Corriger les bugs remontés en priorité absolue
 - [ ] Un canal de support direct (WhatsApp ou téléphone) pour eux
@@ -393,7 +416,7 @@ Décider si le parallélisme "Périodes + design Sources" tient ou si on doit re
 
 ### Pour les 3 compétences minimales
 
-- **Console navigateur** : la vidéo "Chrome DevTools Crash Course" sur YouTube (30 min)
+- **Console navigateur** : la vidéo "Chrome DevTools Crash Course" sur YouTube
 - **Next.js App Router** : le tutoriel officiel `https://nextjs.org/learn` (section App Router seulement)
 - **Supabase SQL** : la doc officielle `https://supabase.com/docs/guides/database/overview`
 

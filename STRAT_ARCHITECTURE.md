@@ -212,7 +212,20 @@ Sans casser la lib pure existante.
 
 ---
 
-## 3. Synthèse — comment naviguer ce document
+## 3. Principe transversal — Tests obligatoires sur les fonctions pures
+
+Toute fonction pure dans `lib/periods/` ou `lib/calculs/` doit être livrée avec ses tests Vitest. Une fonction pure sans tests est équivalente à du code dupliqué : sans contrat vérifiable, la pureté n'apporte pas plus de garanties qu'un copier-coller.
+
+Cas d'application :
+- Tous les filtres de `lib/periods.js` (les 9 filtres + `periodePrecedenteAEgaleDuree`)
+- Tous les calculs de `lib/calculs/*` (calculerCA, calculerFoodCost, calculerEBE, etc.)
+- Bordures critiques à tester systématiquement : DST mars/octobre, années bissextiles, périodes vides, divisions par zéro
+
+Sans ce principe, l'investissement architectural perd sa valeur principale (la non-régression).
+
+---
+
+## 4. Synthèse — comment naviguer ce document
 
 Si tu lis ce document dans 3 mois et que tu hésites sur une décision technique :
 
@@ -224,15 +237,15 @@ Si tu sens qu'une décision ne tient plus (par exemple : perf inattendue, retour
 
 ---
 
-## 4. Liens avec les autres documents
+## 5. Liens avec les autres documents
 
 ### Avec STRAT_CADRAGE.md
-- §13 (filtres) — sera mis à jour pour acter les 3 profils
+- §13 (filtres) — mis à jour en v1.7 pour acter les 3 profils
 - §14 (Inventaire) — pas impacté
-- §17 (anti-patterns) — sera enrichi avec "Mélanger pages opérationnelles et comptables dans un même PeriodFilter"
+- §17 (anti-patterns) — enrichi en v1.7 avec 4 nouveaux anti-patterns liés aux décisions ci-dessus
 
 ### Avec PLANNING_V1.md
-- Phase 1 Semaines 1-2 — sera réécrite pour refléter l'ordre archi (Périodes + design Sources S1, code Sources S2-3, Calculs S2-3, Récup données S4)
+- Phase 1 Semaines 1-4 — entièrement réécrite en v1.1 selon le nouvel ordre archi (S1 Périodes + design Sources, S2-3 Code Sources + Calculs, S4 Récup données)
 
 ### Avec STRAT_IA.md
 - Architecture IA en 4 couches — entièrement compatible avec ces 4 décisions, vit en parallèle (lib/ai/, ia_signaux, etc.). Aucune contradiction.
@@ -245,7 +258,7 @@ Si tu sens qu'une décision ne tient plus (par exemple : perf inattendue, retour
 
 ---
 
-## 5. Historique
+## 6. Historique
 
 - **v1.0 (26 avril 2026)** : capture initiale des 4 décisions architecturales prises pendant la session du 26 avril 2026 (débat à 3 voix Mounir / Claude conversationnel / Claude Code).
 
