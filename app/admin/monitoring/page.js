@@ -1,5 +1,12 @@
 import { supabase } from '@/lib/supabase'
 
+// TODO V1.1 (avant 2e tenant) : philosophie validée le 28 avril 2026
+// = mix. Cards macro restent globales. Tableau "État par client" doit
+// faire 1 query par tenant ou GROUP BY (la colonne Données CA utilise
+// actuellement la même variable globale pour toutes les lignes : bug
+// d'affichage dès le 2e tenant).
+// Cf. session 28 avril, décision produit.
+
 export default async function AdminMonitoring() {
   const today = new Date().toISOString().split('T')[0]
   const hier = new Date(Date.now() - 86400000).toISOString().split('T')[0]

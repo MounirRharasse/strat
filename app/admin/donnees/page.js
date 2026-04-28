@@ -1,6 +1,11 @@
 import { supabase } from '@/lib/supabase'
 import DonneesClient from './DonneesClient'
 
+// TODO V1.1 (avant 2e tenant) : philosophie validée le 28 avril 2026
+// = par tenant avec sélecteur. Ajouter ?tenant=<uuid> + dropdown +
+// .eq('parametre_id', tenant) sur les 3 queries.
+// Cf. session 28 avril, décision produit.
+
 export default async function AdminDonnees({ searchParams }) {
   const onglet = searchParams?.onglet || 'ca'
   const page = parseInt(searchParams?.page || '1')

@@ -1,5 +1,9 @@
 import { supabase } from '@/lib/supabase'
 
+// TODO V1.1 (avant 2e tenant) : philosophie validée le 28 avril 2026
+// = global super-admin (vision macro Strat). Pas de modif prévue.
+// Cf. session 28 avril, décision produit.
+
 export default async function AdminDashboard() {
   const { data: clients } = await supabase.from('parametres').select('*')
   const { data: transactions } = await supabase.from('transactions').select('id', { count: 'exact' })
