@@ -1,13 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
+import PeriodFilter from '@/components/PeriodFilter'
 import DrillDown from './DrillDown'
 
-export default function DashboardClient({ today, params }) {
-  const [filtre, setFiltre] = useState('jour')
-  const [data, setData] = useState(today)
-  const [loading, setLoading] = useState(false)
+export default function DashboardClient({ data, params, periode }) {
   const [drill, setDrill] = useState(null)
 
   const fmt = (n) => new Intl.NumberFormat('fr-FR', {
@@ -20,56 +18,24 @@ export default function DashboardClient({ today, params }) {
   const alerteTicketMin = params?.alerte_ticket_min || 14.5
   const objectifJour = Math.round(objectifCA / 30)
 
-  function getSince(f) {
-    const now = new Date()
-    if (f === 'semaine') return new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
-    if (f === 'mtd') return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0]
-    if (f === 'ytd') return new Date(Date.UTC(now.getFullYear(), 0, 1)).toISOString().split('T')[0]
-    return today.date
-  }
-
-  useEffect(() => {
-    if (filtre === 'jour') { setData(today); return }
-    setLoading(true)
-    const since = getSince(filtre)
-    const until = today.date
-    fetch('/api/analyses?since=' + since + '&until=' + until)
-      .then(r => r.json())
-      .then(d => {
-        setData({
-          ...today,
-          ca: { brut: d.ca.brut, ht: d.ca.ht, tva: d.ca.tva, caisse: d.ca.caisse, online: d.ca.online },
-          canaux: { caisse: d.ca.caisse, foxorder: d.ca.foxorder || d.ca.online, uber: d.ca.uber || 0 },
-          frequentation: { nbCommandes: d.frequentation.nbCommandes },
-          panierMoyen: d.panierMoyen,
-          foodCostP: d.foodCostP,
-          paiements: d.paiements,
-          cashADeposer: d.cashADeposer,
-          commissions: d.commissions,
-        })
-        setLoading(false)
-      })
-      .catch(() => { setData(today); setLoading(false) })
-  }, [filtre])
-
   const caBrut = data?.ca?.brut || 0
   const caHT = data?.ca?.ht || 0
   const caTVA = data?.ca?.tva || 0
   const caCaisse = data?.canaux?.caisse || 0
-  const caFoxorder = data?.canaux?.foxorder || data?.canaux?.online || 0
+  const caFoxorder = data?.canaux?.foxorder || 0
   const caUber = data?.canaux?.uber || 0
   const nbCommandes = data?.frequentation?.nbCommandes || 0
   const panierMoyen = data?.panierMoyen || 0
-  const cashADeposer = data?.cashADeposer ?? today?.cashADeposer ?? 0
-  const paiements = data?.paiements || today?.paiements || {}
-  const commissions = data?.commissions || today?.commissions || {}
+  const cashADeposer = data?.cashADeposer ?? 0
+  const paiements = data?.paiements || {}
+  const commissions = data?.commissions || {}
   const foodCostP = data?.foodCostP || 0
-  const weekly = today?.weekly || []
+  const weekly = data?.weekly || []
 
-  const chargesFixesMensuelles = today?.chargesFixesMensuelles || 0
+  const chargesFixesMensuelles = data?.chargesFixesMensuelles || 0
   const tauxMargeVariable = caHT > 0 ? ((caHT - caHT * (foodCostP / 100)) / caHT * 100) : 66
   const seuilJournalier = chargesFixesMensuelles > 0 ? Math.round(chargesFixesMensuelles / 30 / (tauxMargeVariable / 100)) : 0
-  const caJour = data?.ca?.brut || today?.ca?.brut || 0
+  const caJour = data?.ca?.brut || 0
   const seuilAtteint = seuilJournalier > 0 && caJour >= seuilJournalier
   const seuilEcart = caJour - seuilJournalier
 
@@ -112,33 +78,17 @@ export default function DashboardClient({ today, params }) {
           <p className="text-gray-400 text-sm mt-0.5">
             {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
-          {filtre !== 'jour' && (
-            <p className="text-blue-400 text-xs mt-0.5">
-              {filtre === 'semaine' ? '7 derniers jours' : filtre === 'mtd' ? 'Depuis le 1er du mois' : 'Depuis le 1er janvier'}
-            </p>
-          )}
+          <p className="text-blue-400 text-xs mt-0.5">
+            {data.label} · {data.since} → {data.until}
+          </p>
         </div>
         <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center font-bold text-sm">K</div>
       </div>
 
-      <div className="flex gap-2 mb-4">
-        {[
-          { val: 'jour', label: 'Jour' },
-          { val: 'semaine', label: 'Sem.' },
-          { val: 'mtd', label: 'MTD' },
-          { val: 'ytd', label: 'YTD' }
-        ].map(f => (
-          <button key={f.val} onClick={() => setFiltre(f.val)}
-            className={"flex-1 text-center text-xs py-2 rounded-xl border transition " + (filtre === f.val ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>
-            {f.label}
-          </button>
-        ))}
+      <div className="mb-4">
+        <PeriodFilter profil="pilotage" basePath="/dashboard" filtreActif={periode} />
       </div>
 
-      {loading ? (
-        <div className="text-center py-12 text-gray-500 text-sm">Chargement...</div>
-      ) : (
-        <>
           {/* KPI 3 CARDS CLIQUABLES */}
           <div className="grid grid-cols-3 gap-2 mb-3">
             <div onClick={() => setDrill('ca')} className="bg-gray-900 rounded-xl p-3 border border-gray-800 cursor-pointer hover:border-gray-600 active:scale-95 transition">
@@ -240,7 +190,7 @@ export default function DashboardClient({ today, params }) {
           <div onClick={() => setDrill('foodcost')} className="bg-gray-900 rounded-2xl p-4 mb-3 border border-gray-800 cursor-pointer hover:border-gray-600 transition">
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">Food cost MTD</p>
+                <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">Food cost · {data.label}</p>
                 <p className={"text-3xl font-bold font-mono " + (foodCostP > alerteFoodCostMax ? 'text-red-400' : foodCostP > 0 ? 'text-green-400' : 'text-gray-500')}>
                   {foodCostP > 0 ? foodCostP.toFixed(1) + '%' : 'N/A'}
                 </p>
@@ -388,8 +338,6 @@ export default function DashboardClient({ today, params }) {
               </div>
             </div>
           </div>
-        </>
-      )}
 
       {drill && (
         <DrillDown
