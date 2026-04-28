@@ -1,6 +1,14 @@
 import { supabase } from '@/lib/supabase'
+import { getParametreIdFromSession } from '@/lib/auth'
 
 export async function GET(request) {
+  let parametre_id
+  try {
+    parametre_id = await getParametreIdFromSession()
+  } catch {
+    return Response.json({ error: 'Session invalide ou expirée' }, { status: 401 })
+  }
+
   const { searchParams } = new URL(request.url)
   const since = searchParams.get('since')
   const until = searchParams.get('until')
@@ -9,6 +17,7 @@ export async function GET(request) {
   let query = supabase
     .from('historique_ca')
     .select('*')
+    .eq('parametre_id', parametre_id)
     .order('date', { ascending: true })
 
   if (since) query = query.gte('date', since)

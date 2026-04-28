@@ -24,9 +24,9 @@ export default async function PL({ searchParams }) {
 
   const [reports, { data: transactions }, { data: historique }, { data: entreesUber }] = await Promise.all([
     getAllReports(since, today),
-    supabase.from('transactions').select('*').gte('date', since).lte('date', today),
-    supabase.from('historique_ca').select('uber, nb_commandes').gte('date', since).lte('date', today),
-    supabase.from('entrees').select('*').gte('date', since).lte('date', today).eq('source', 'uber_eats')
+    supabase.from('transactions').select('*').eq('parametre_id', parametre_id).gte('date', since).lte('date', today),
+    supabase.from('historique_ca').select('uber, nb_commandes').eq('parametre_id', parametre_id).gte('date', since).lte('date', today),
+    supabase.from('entrees').select('*').eq('parametre_id', parametre_id).gte('date', since).lte('date', today).eq('source', 'uber_eats')
   ])
 
   // CA Popina

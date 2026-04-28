@@ -31,13 +31,14 @@ export default async function Dashboard({ searchParams }) {
   const [kpis, weekly, { data: transactionsMois }] = await Promise.all([
     getAnalysesKPIs({ parametre_id, since, until, parametres: params }),
     getWeeklyData(),
-    supabase.from('transactions').select('*').gte('date', moisCourant.since).lte('date', moisCourant.until)
+    supabase.from('transactions').select('*').eq('parametre_id', parametre_id).gte('date', moisCourant.since).lte('date', moisCourant.until)
   ])
 
   // Pour le graphe 7 jours : croiser weekly avec uber historique
   const { data: histWeekly } = await supabase
     .from('historique_ca')
     .select('date, uber, ca_brut')
+    .eq('parametre_id', parametre_id)
     .in('date', (weekly || []).map(j => j.date))
 
   const categoriesFixe = ['loyers_charges', 'honoraires', 'redevance_marque', 'energie', 'autres_frais_influencables', 'prestations_operationnelles']

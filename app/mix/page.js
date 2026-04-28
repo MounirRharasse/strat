@@ -25,6 +25,7 @@ export default async function MixVentes({ searchParams }) {
   const { data: uberProduits } = await supabase
     .from('uber_orders')
     .select('produit, quantite, ventes_ttc, heure, date')
+    .eq('parametre_id', parametre_id)
     .gte('date', since)
     .lte('date', today)
 
@@ -56,6 +57,7 @@ export default async function MixVentes({ searchParams }) {
   const { data: amplitudeDB } = await supabase
     .from('amplitude_horaire')
     .select('heure, nb_commandes, ca')
+    .eq('parametre_id', parametre_id)
     .eq('canal', 'popina')
     .gte('date', since)
     .lte('date', today)

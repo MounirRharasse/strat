@@ -24,9 +24,9 @@ export default async function Previsions() {
   const [reports, orders, { data: transactions }, { data: historique }, { data: entreesUber }, { data: parametres }] = await Promise.all([
     getAllReports(firstDay, today),
     getAllOrders(firstDay, today),
-    supabase.from('transactions').select('*').gte('date', firstDay).lte('date', today),
-    supabase.from('historique_ca').select('*').gte('date', firstDay).lte('date', today),
-    supabase.from('entrees').select('*').gte('date', firstDay).lte('date', today).eq('source', 'uber_eats'),
+    supabase.from('transactions').select('*').eq('parametre_id', parametre_id).gte('date', firstDay).lte('date', today),
+    supabase.from('historique_ca').select('*').eq('parametre_id', parametre_id).gte('date', firstDay).lte('date', today),
+    supabase.from('entrees').select('*').eq('parametre_id', parametre_id).gte('date', firstDay).lte('date', today).eq('source', 'uber_eats'),
     supabase.from('parametres').select('*').eq('id', parametre_id).single()
   ])
 

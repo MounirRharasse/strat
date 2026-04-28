@@ -24,9 +24,9 @@ export default async function Journal({ searchParams }) {
   const { since } = getPeriodeFromFiltreId(periode, { timezone })
 
   const [{ data: transactions }, { data: entrees }, { data: historique }, kpisToday, kpisYesterday] = await Promise.all([
-    supabase.from('transactions').select('*').gte('date', since).order('date', { ascending: false }).order('created_at', { ascending: false }),
-    supabase.from('entrees').select('*').gte('date', since).order('date', { ascending: false }),
-    supabase.from('historique_ca').select('date, ca_brut, ca_ht, uber, nb_commandes, especes, cb, tr').gte('date', since).order('date', { ascending: false }),
+    supabase.from('transactions').select('*').eq('parametre_id', parametre_id).gte('date', since).order('date', { ascending: false }).order('created_at', { ascending: false }),
+    supabase.from('entrees').select('*').eq('parametre_id', parametre_id).gte('date', since).order('date', { ascending: false }),
+    supabase.from('historique_ca').select('date, ca_brut, ca_ht, uber, nb_commandes, especes, cb, tr').eq('parametre_id', parametre_id).gte('date', since).order('date', { ascending: false }),
     getDailyKPIs(today),
     getDailyKPIs(yesterday)
   ])
