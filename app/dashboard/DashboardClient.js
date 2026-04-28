@@ -190,7 +190,11 @@ export default function DashboardClient({ data, params, periode }) {
           <div onClick={() => setDrill('foodcost')} className="bg-gray-900 rounded-2xl p-4 mb-3 border border-gray-800 cursor-pointer hover:border-gray-600 transition">
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">Food cost · {data.label}</p>
+                <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">
+                  Food cost · {data.foodCostMode === 'exact'
+                    ? `exact ${data.foodCostPeriode.since} → ${data.foodCostPeriode.until}`
+                    : `${data.label} (estimé)`}
+                </p>
                 <p className={"text-3xl font-bold font-mono " + (foodCostP > alerteFoodCostMax ? 'text-red-400' : foodCostP > 0 ? 'text-green-400' : 'text-gray-500')}>
                   {foodCostP > 0 ? foodCostP.toFixed(1) + '%' : 'N/A'}
                 </p>
@@ -202,7 +206,12 @@ export default function DashboardClient({ data, params, periode }) {
                     {foodCostP > objectifFoodCost ? '+' : ''}{(foodCostP - objectifFoodCost).toFixed(1)}pts
                   </span>
                 )}
-                <p className="text-xs text-yellow-600 mt-2 bg-yellow-950 border border-yellow-900 px-2 py-0.5 rounded-full">provisoire</p>
+                {data.foodCostMode === 'estime' && (
+                  <p className="text-xs text-yellow-600 mt-2 bg-yellow-950 border border-yellow-900 px-2 py-0.5 rounded-full">estimé</p>
+                )}
+                {data.foodCostMode === 'exact' && (
+                  <p className="text-xs text-green-500 mt-2 bg-green-950 border border-green-900 px-2 py-0.5 rounded-full">exact</p>
+                )}
                 <p className="text-gray-600 text-xs mt-1">Tap ›</p>
               </div>
             </div>

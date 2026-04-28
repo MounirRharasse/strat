@@ -11,7 +11,10 @@ export default async function Parametres() {
     redirect('/login')
   }
 
-  const { data } = await supabase.from('parametres').select('*').eq('id', parametre_id).single()
+  const [{ data }, { data: inventaires }] = await Promise.all([
+    supabase.from('parametres').select('*').eq('id', parametre_id).single(),
+    supabase.from('inventaires').select('*').eq('parametre_id', parametre_id).order('date', { ascending: false })
+  ])
 
   const params = data || {
     nom_restaurant: 'Krousty Sabaidi Montpellier Castelnau',
@@ -25,5 +28,5 @@ export default async function Parametres() {
     frequence_inventaire: 'mensuel'
   }
 
-  return <ParamClient params={params} />
+  return <ParamClient params={params} inventaires={inventaires || []} />
 }

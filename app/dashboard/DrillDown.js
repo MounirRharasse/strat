@@ -300,10 +300,17 @@ const resteAFaire = Math.max(objectifPeriode - caBrut, 0)
         <p className="text-xs text-blue-400 uppercase tracking-wider mb-1">Comment reduire le food cost</p>
         <p className="text-sm text-gray-300 leading-relaxed">Food cost = achats matieres / CA HT. Saisis tes achats via le bouton +. Objectif fast-food : 28-32%.</p>
       </div>
-      <div className="bg-yellow-950/30 border border-yellow-900/30 rounded-xl px-4 py-3">
-        <p className="text-xs text-yellow-500 font-medium mb-1">Badge provisoire</p>
-        <p className="text-xs text-gray-400">Ce food cost est calcule sur les achats saisis manuellement, sans variation de stock.</p>
-      </div>
+      {(data?.foodCostMode === 'exact' || kpis?.foodCostMode === 'exact') ? (
+        <div className="bg-green-950/30 border border-green-900/30 rounded-xl px-4 py-3">
+          <p className="text-xs text-green-500 font-medium mb-1">Food cost exact</p>
+          <p className="text-xs text-gray-400">Calculé avec les inventaires saisis : (stock début + achats - stock fin) ÷ CA HT.</p>
+        </div>
+      ) : (
+        <div className="bg-yellow-950/30 border border-yellow-900/30 rounded-xl px-4 py-3">
+          <p className="text-xs text-yellow-500 font-medium mb-1">Food cost estimé</p>
+          <p className="text-xs text-gray-400">Calculé sur les achats saisis manuellement, sans variation de stock. Saisis 2 inventaires dans la période pour un calcul exact.</p>
+        </div>
+      )}
     </>
   )
 

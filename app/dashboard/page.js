@@ -62,6 +62,8 @@ export default async function Dashboard({ searchParams }) {
     cashADeposer: kpis.cashADeposer,
     commissions: kpis.commissions,
     foodCostP: kpis.foodCostP,
+    foodCostMode: kpis.foodCostMode,
+    foodCostPeriode: kpis.foodCostPeriode,
     chargesFixesMensuelles,
     weekly: weeklyAvecUber
   }

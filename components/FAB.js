@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 const CATEGORIES_DEPENSE = {
   consommations: {
@@ -121,8 +122,11 @@ const CATEGORIES_ENTREE = [
 const TVA_TAUX = [0, 5.5, 10, 20]
 
 export default function FAB() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [open, setOpen] = useState(false)
-  const [type, setType] = useState('depense') // 'depense' ou 'entree'
+  const [type, setType] = useState('depense') // 'depense' | 'entree' | 'inventaire'
+  const [inventairesExistants, setInventairesExistants] = useState([])
   const [step, setStep] = useState(1)
   const [montant, setMontant] = useState('')
   const [fournisseur, setFournisseur] = useState('')
@@ -147,6 +151,21 @@ export default function FAB() {
     return () => clearTimeout(timer)
   }, [fournisseur])
 
+  // Deep link depuis Paramètres : ?openFab=inventaire ouvre directement le FAB en mode inventaire
+  useEffect(() => {
+    if (searchParams?.get('openFab') === 'inventaire') {
+      setOpen(true)
+      setType('inventaire')
+    }
+  }, [searchParams])
+
+  // Pré-fetch des inventaires existants (pour détecter une date déjà saisie)
+  useEffect(() => {
+    if (open && type === 'inventaire' && inventairesExistants.length === 0) {
+      fetch('/api/inventaires').then(r => r.json()).then(d => setInventairesExistants(Array.isArray(d) ? d : [])).catch(() => {})
+    }
+  }, [open, type])
+
   function selectSuggestion(s) {
     setFournisseur(s.nom)
     setCategorie(s.categorie_pl)
@@ -170,6 +189,7 @@ export default function FAB() {
     setDate(new Date().toISOString().split('T')[0])
     setSuccess(false)
     setNbCommandes('')
+    setInventairesExistants([])
   }
 
   function close() {
@@ -225,6 +245,24 @@ export default function FAB() {
     if (res.ok) { setSuccess(true); setTimeout(close, 1500) }
   }
 
+  async function submitInventaire() {
+    setLoading(true)
+    const valeur = parseFloat(montant)
+    const res = await fetch('/api/inventaires', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, valeur_totale: valeur, note: note || null })
+    })
+    setLoading(false)
+    if (res.ok) {
+      setSuccess(true)
+      router.refresh()
+      setTimeout(close, 1500)
+    }
+  }
+
+  const inventaireExistantPourDate = inventairesExistants.find(i => i.date === date)
+
   const montantHT = montant ? Math.round((parseFloat(montant) / (1 + tva / 100)) * 100) / 100 : 0
   const montantTVA = montant ? Math.round((parseFloat(montant) - montantHT) * 100) / 100 : 0
 
@@ -245,17 +283,23 @@ export default function FAB() {
 
             {success ? (
               <div className="text-center py-8">
-                <div className="text-4xl mb-3">{type === 'entree' ? '✅' : '✅'}</div>
-                <p className="text-white font-medium">{type === 'entree' ? 'Entree enregistree' : 'Depense enregistree'}</p>
+                <div className="text-4xl mb-3">✅</div>
+                <p className="text-white font-medium">
+                  {type === 'inventaire' ? 'Inventaire enregistre' : type === 'entree' ? 'Entree enregistree' : 'Depense enregistree'}
+                </p>
               </div>
             ) : (
               <>
                 <div className="flex justify-between items-center px-5 mb-4">
-                  <h2 className="text-lg font-semibold">Nouvelle transaction</h2>
-                  <span className="text-xs text-gray-500">{step}/{type === 'entree' ? '3' : '4'}</span>
+                  <h2 className="text-lg font-semibold">
+                    {type === 'inventaire' ? 'Nouvel inventaire' : 'Nouvelle transaction'}
+                  </h2>
+                  <span className="text-xs text-gray-500">
+                    {step}/{type === 'inventaire' ? '2' : type === 'entree' ? '3' : '4'}
+                  </span>
                 </div>
 
-                {/* TOGGLE ENTREE / DEPENSE */}
+                {/* TOGGLE TYPE */}
                 {step === 1 && (
                   <div className="flex bg-gray-800 rounded-xl p-1 mx-5 mb-4">
                     <button onClick={() => setType('depense')}
@@ -266,13 +310,19 @@ export default function FAB() {
                       className={"flex-1 py-2 rounded-lg text-sm font-medium transition " + (type === 'entree' ? 'bg-green-500 text-white' : 'text-gray-400')}>
                       Entree
                     </button>
+                    <button onClick={() => setType('inventaire')}
+                      className={"flex-1 py-2 rounded-lg text-sm font-medium transition " + (type === 'inventaire' ? 'bg-purple-500 text-white' : 'text-gray-400')}>
+                      Inventaire
+                    </button>
                   </div>
                 )}
 
                 {/* STEP 1 — MONTANT */}
                 {step === 1 && (
                   <div className="px-5">
-                    <p className="text-gray-400 text-sm mb-3">Quel montant ? (TTC)</p>
+                    <p className="text-gray-400 text-sm mb-3">
+                      {type === 'inventaire' ? 'Valeur totale du stock' : 'Quel montant ? (TTC)'}
+                    </p>
                     <div className="flex items-center gap-2 bg-gray-800 rounded-xl px-4 py-3 mb-4">
                       <span className="text-gray-400 text-lg">€</span>
                       <input
@@ -299,6 +349,46 @@ export default function FAB() {
                       className="w-full bg-white text-gray-950 font-semibold rounded-xl py-3 disabled:opacity-30"
                     >
                       Continuer →
+                    </button>
+                  </div>
+                )}
+
+                {/* STEP 2 INVENTAIRE — NOTE + CONFIRMATION */}
+                {step === 2 && type === 'inventaire' && (
+                  <div className="px-5">
+                    {inventaireExistantPourDate && (
+                      <div className="mb-3 px-4 py-3 rounded-xl bg-yellow-950/40 border border-yellow-900/60">
+                        <p className="text-xs text-yellow-400 font-medium mb-1">Inventaire deja existant</p>
+                        <p className="text-xs text-gray-300">
+                          Un inventaire existe deja pour le {date} ({Math.round(inventaireExistantPourDate.valeur_totale)} €).
+                          Continuer le remplacera.
+                        </p>
+                      </div>
+                    )}
+                    <p className="text-gray-400 text-sm mb-2">Note (optionnel)</p>
+                    <textarea
+                      value={note}
+                      onChange={e => setNote(e.target.value)}
+                      placeholder="Ex. estimation a la louche, a refaire dimanche"
+                      rows={3}
+                      className="w-full bg-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none mb-4 resize-none"
+                    />
+                    <div className="bg-gray-800 rounded-xl p-3 mb-4 text-sm">
+                      <div className="flex justify-between mb-1">
+                        <span className="text-gray-400">Date</span>
+                        <span className="text-white font-mono">{date}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Valeur stock</span>
+                        <span className="text-white font-mono">{montant} €</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={submitInventaire}
+                      disabled={loading}
+                      className="w-full bg-purple-500 text-white font-semibold rounded-xl py-3 disabled:opacity-50"
+                    >
+                      {loading ? 'Enregistrement...' : (inventaireExistantPourDate ? 'Remplacer' : 'Enregistrer')}
                     </button>
                   </div>
                 )}

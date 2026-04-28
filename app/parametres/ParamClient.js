@@ -2,9 +2,13 @@
 
 import { useState } from 'react'
 import { signOut } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 
-export default function ParamClient({ params: initialParams }) {
+export default function ParamClient({ params: initialParams, inventaires: initialInventaires = [] }) {
+  const router = useRouter()
   const [params, setParams] = useState(initialParams)
+  const [inventaires, setInventaires] = useState(initialInventaires)
+  const [showAideInventaire, setShowAideInventaire] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -215,6 +219,102 @@ export default function ParamClient({ params: initialParams }) {
           hint="Taux de commission Uber Eats sur tes ventes"
         />
       </div>
+
+      {/* INVENTAIRES */}
+      <SectionHeader label="Inventaires" hint="Pour un food cost exact" />
+      <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
+        {inventaires.length === 0 ? (
+          <div className="p-4 text-center">
+            <p className="text-sm text-gray-400">Aucun inventaire enregistré</p>
+            <p className="text-xs text-gray-600 mt-1">Saisis-en un pour activer le calcul exact du food cost</p>
+          </div>
+        ) : (
+          <>
+            {inventaires.map(inv => (
+              <div key={inv.id} className="px-4 py-3 border-b border-gray-800 last:border-0 flex justify-between items-center">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-300">
+                    {new Date(inv.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                  {inv.note && <p className="text-xs text-gray-500 mt-0.5 truncate">{inv.note}</p>}
+                </div>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <p className="text-sm font-mono font-medium text-white">{fmt(inv.valeur_totale)}</p>
+                  <button
+                    onClick={async () => {
+                      if (!confirm('Supprimer cet inventaire ?')) return
+                      const res = await fetch('/api/inventaires?id=' + inv.id, { method: 'DELETE' })
+                      if (res.ok) {
+                        setInventaires(prev => prev.filter(x => x.id !== inv.id))
+                        router.refresh()
+                      }
+                    }}
+                    className="text-gray-600 hover:text-red-400 text-xs"
+                    aria-label="Supprimer"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div className="px-4 py-2 bg-gray-800/50 border-t border-gray-800">
+              <p className="text-xs text-gray-500">
+                Dernier inventaire : il y a {Math.round((Date.now() - new Date(inventaires[0].date).getTime()) / 86400000)} jours
+              </p>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="mt-2 px-1 flex flex-col gap-1">
+        <button
+          onClick={() => router.push('/parametres?openFab=inventaire')}
+          className="w-full py-2.5 rounded-xl bg-purple-600 text-white text-sm font-medium hover:bg-purple-500 transition"
+        >
+          + Nouvel inventaire
+        </button>
+        <button
+          onClick={() => setShowAideInventaire(true)}
+          className="w-full py-1 text-xs text-gray-500 hover:text-gray-300"
+        >
+          ⓘ Comment ça marche ?
+        </button>
+      </div>
+
+      {showAideInventaire && (
+        <div className="fixed inset-0 z-50 flex items-end" onClick={() => setShowAideInventaire(false)}>
+          <div className="absolute inset-0 bg-black/60"></div>
+          <div className="relative w-full max-w-md mx-auto bg-gray-900 rounded-t-2xl border border-gray-800 z-10 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-gray-700 rounded-full mx-auto mt-3 mb-1"></div>
+            <div className="px-5 py-4">
+              <h2 className="text-lg font-semibold mb-3">Inventaire et food cost</h2>
+              <div className="space-y-4 text-sm">
+                <div>
+                  <p className="text-gray-200 font-medium mb-1">Pourquoi un inventaire ?</p>
+                  <p className="text-gray-400 leading-relaxed">Ton food cost est une estimation à partir de tes achats. Pour un chiffre exact, fais un inventaire de temps en temps.</p>
+                </div>
+                <div>
+                  <p className="text-gray-200 font-medium mb-1">Estimé vs exact ?</p>
+                  <p className="text-gray-400 leading-relaxed">Sans inventaire : Strat estime ton food cost à partir des achats saisis. Avec 2 inventaires qui encadrent une période : food cost = (stock début + achats - stock fin) ÷ CA HT.</p>
+                </div>
+                <div>
+                  <p className="text-gray-200 font-medium mb-1">Comment faire ?</p>
+                  <p className="text-gray-400 leading-relaxed">Compte la valeur totale de ton stock (matières premières et boissons). Une fois par mois suffit pour démarrer.</p>
+                </div>
+                <div>
+                  <p className="text-gray-200 font-medium mb-1">Quelle fréquence ?</p>
+                  <p className="text-gray-400 leading-relaxed">Mensuelle minimum, hebdomadaire pour les plus avancés.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAideInventaire(false)}
+                className="w-full mt-5 py-2.5 rounded-xl bg-gray-800 text-gray-200 text-sm font-medium"
+              >
+                Compris
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CONNEXIONS */}
       <SectionHeader label="Connexions" />
