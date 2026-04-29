@@ -43,7 +43,7 @@ function getPeriodeDates(granularite, offset) {
   return { since, until, label, souslabel }
 }
 
-export default function AnalysesClient({ params }) {
+export default function ComparaisonView({ params }) {
   const [granularite, setGranularite] = useState('semaine')
   const [periodes, setPeriodes] = useState([
     { id: 0, offset: 0, data: null, loading: true, dates: null },
@@ -109,14 +109,14 @@ export default function AnalysesClient({ params }) {
       })
     })
     .then(r => r.text())
-.then(text => { 
+.then(text => {
   console.log('IA réponse:', text.substring(0, 100))
   setAiInsight(text)
-  setLoadingAI(false) 
+  setLoadingAI(false)
 })
-.catch(err => { 
+.catch(err => {
   console.log('IA erreur:', err)
-  setLoadingAI(false) 
+  setLoadingAI(false)
 })
   }
 
@@ -160,12 +160,8 @@ export default function AnalysesClient({ params }) {
   const donneesChargees = periodes[0]?.data && periodes[1]?.data && !periodes[0]?.loading && !periodes[1]?.loading
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-4 max-w-md mx-auto pb-24">
-
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold tracking-tight">Analyses</h1>
-        <p className="text-gray-400 text-sm mt-0.5">Comparez vos periodes librement</p>
-      </div>
+    <>
+      <p className="text-gray-400 text-sm mb-4">Comparez vos periodes librement</p>
 
       <div className="flex gap-2 mb-4">
         {['semaine', 'mois', 'trimestre'].map(g => (
@@ -296,6 +292,6 @@ export default function AnalysesClient({ params }) {
           })}
         </div>
       </div>
-    </div>
+    </>
   )
 }
