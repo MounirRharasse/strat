@@ -5,8 +5,10 @@ import { supabase } from '@/lib/supabase'
 import { getParametreIdFromSession } from '@/lib/auth'
 import { getPeriodeFromFiltreId, periodePrecedenteAEgaleDuree } from '@/lib/periods'
 import {
+  agregerHierarchie,
   agregerParMacroCategorie,
-  calculerVariations,
+  agregerParFournisseur,
+  appliquerVariationsHierarchie,
   agregerSparkline6Mois
 } from '@/lib/analyses/sorties'
 import PeriodFilter from '@/components/PeriodFilter'
@@ -21,7 +23,7 @@ export default async function Analyses({ searchParams }) {
     redirect('/login')
   }
 
-  const onglet = searchParams?.onglet === 'sorties' ? 'sorties' : 'comparaison'
+  const onglet = searchParams?.onglet === 'comparaison' ? 'comparaison' : 'sorties'
   const periode = searchParams?.periode || 'ce-mois'
 
   const { data: parametres } = await supabase
@@ -67,9 +69,11 @@ export default async function Analyses({ searchParams }) {
         .lte('date', periodeActuelle.until)
     ])
 
-    const macroCatsActuel = agregerParMacroCategorie(txActuelles || [])
+    const hierarchie = agregerHierarchie(txActuelles || [])
     const macroCatsPrec = agregerParMacroCategorie(txPrec || [])
-    const macroCats = calculerVariations(macroCatsActuel, macroCatsPrec)
+    const mapPrecMacro = new Map(macroCatsPrec.map(m => [m.macroCat, m.total]))
+    const mapPrecFour = agregerParFournisseur(txPrec || [])
+    const macroCats = appliquerVariationsHierarchie(hierarchie, mapPrecMacro, mapPrecFour)
     const sparklines = agregerSparkline6Mois(tx6Mois || [], periodeActuelle.until)
     const totalActuel = (txActuelles || []).reduce((s, t) => s + (t.montant_ttc || 0), 0)
     const totalPrecedent = (txPrec || []).reduce((s, t) => s + (t.montant_ttc || 0), 0)
