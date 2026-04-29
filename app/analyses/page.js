@@ -3,7 +3,12 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { getParametreIdFromSession } from '@/lib/auth'
-import { getPeriodeFromFiltreId } from '@/lib/periods'
+import { getPeriodeFromFiltreId, periodePrecedenteAEgaleDuree } from '@/lib/periods'
+import {
+  agregerParMacroCategorie,
+  calculerVariations,
+  agregerSparkline6Mois
+} from '@/lib/analyses/sorties'
 import PeriodFilter from '@/components/PeriodFilter'
 import SortiesView from './SortiesView'
 import ComparaisonView from './ComparaisonView'
@@ -27,21 +32,56 @@ export default async function Analyses({ searchParams }) {
 
   const timezone = parametres?.timezone || 'Europe/Paris'
 
-  let transactions = []
-  let since = null
-  let until = null
+  let sortiesProps = null
   if (onglet === 'sorties') {
-    const r = getPeriodeFromFiltreId(periode, { timezone })
-    since = r.since
-    until = r.until
-    const { data } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('parametre_id', parametre_id)
-      .gte('date', since)
-      .lte('date', until)
-      .order('date', { ascending: false })
-    transactions = data || []
+    const periodeActuelle = getPeriodeFromFiltreId(periode, { timezone })
+    const periodePrec = periodePrecedenteAEgaleDuree(periodeActuelle)
+
+    const untilDate = new Date(periodeActuelle.until)
+    const debut6Mois = new Date(untilDate.getFullYear(), untilDate.getMonth() - 5, 1)
+      .toISOString()
+      .slice(0, 10)
+
+    const [
+      { data: txActuelles },
+      { data: txPrec },
+      { data: tx6Mois }
+    ] = await Promise.all([
+      supabase
+        .from('transactions')
+        .select('*')
+        .eq('parametre_id', parametre_id)
+        .gte('date', periodeActuelle.since)
+        .lte('date', periodeActuelle.until),
+      supabase
+        .from('transactions')
+        .select('*')
+        .eq('parametre_id', parametre_id)
+        .gte('date', periodePrec.since)
+        .lte('date', periodePrec.until),
+      supabase
+        .from('transactions')
+        .select('date, categorie_pl, montant_ttc')
+        .eq('parametre_id', parametre_id)
+        .gte('date', debut6Mois)
+        .lte('date', periodeActuelle.until)
+    ])
+
+    const macroCatsActuel = agregerParMacroCategorie(txActuelles || [])
+    const macroCatsPrec = agregerParMacroCategorie(txPrec || [])
+    const macroCats = calculerVariations(macroCatsActuel, macroCatsPrec)
+    const sparklines = agregerSparkline6Mois(tx6Mois || [], periodeActuelle.until)
+    const totalActuel = (txActuelles || []).reduce((s, t) => s + (t.montant_ttc || 0), 0)
+    const totalPrecedent = (txPrec || []).reduce((s, t) => s + (t.montant_ttc || 0), 0)
+
+    sortiesProps = {
+      macroCats,
+      totalActuel,
+      totalPrecedent,
+      sparklines,
+      periode: periodeActuelle,
+      periodePrecedente: periodePrec
+    }
   }
 
   const buildTabHref = (tab) => {
@@ -83,10 +123,7 @@ export default async function Analyses({ searchParams }) {
               <PeriodFilter profil="pilotage" basePath="/analyses" filtreActif={periode} />
             </Suspense>
           </div>
-          <SortiesView
-            transactions={transactions}
-            periode={{ id: periode, since, until }}
-          />
+          <SortiesView {...sortiesProps} />
         </>
       )}
 
