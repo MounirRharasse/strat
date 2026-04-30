@@ -78,6 +78,17 @@ export default function DashboardClient({ data, params, periode }) {
         <h1 className="text-2xl font-bold tracking-tight">Mon Business</h1>
         <p className="text-blue-400 text-xs mt-0.5">{data.label} · {data.since} → {data.until}</p>
         <IndicSynchro lastSyncDate={lastSyncDate} />
+        {data?.auditCount?.nbTotal > 0 && (
+          <Link
+            href="/journal"
+            className="flex items-center justify-between mt-1 text-xs hover:opacity-80"
+          >
+            <span className={data.auditCount.nbCritiques > 0 ? 'text-red-400' : 'text-yellow-400'}>
+              {data.auditCount.nbCritiques > 0 ? '🔴' : '⚠️'} {data.auditCount.nbTotal} point{data.auditCount.nbTotal > 1 ? 's' : ''} d'attention dans ton journal
+            </span>
+            <span className="text-gray-600">›</span>
+          </Link>
+        )}
       </div>
 
       <div className="mb-4">

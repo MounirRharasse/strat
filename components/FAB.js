@@ -151,17 +151,45 @@ export default function FAB() {
     return () => clearTimeout(timer)
   }, [fournisseur])
 
-  // Deep link : ?openFab=inventaire | depense ouvre directement le FAB
-  // dans le mode correspondant. 'depense' utilisé par l'empty state du Seuil.
+  // Deep link : ?openFab=inventaire | depense | entree ouvre directement
+  // le FAB dans le mode correspondant.
+  // Params optionnels (commit 3 sprint Journal) : date, source, categorie,
+  // sous_categorie pour pré-remplir le formulaire depuis les alertes du journal.
   useEffect(() => {
     const target = searchParams?.get('openFab')
+    if (!target) return
+
     if (target === 'inventaire') {
       setOpen(true)
       setType('inventaire')
+      return
+    }
+
+    if (target === 'entree') {
+      setOpen(true)
+      setType('entree')
     } else if (target === 'depense') {
       setOpen(true)
       setType('depense')
+    } else {
+      return
     }
+
+    const dateParam = searchParams.get('date')
+    if (dateParam) setDate(dateParam)
+
+    const source = searchParams.get('source')
+    if (source) setCategorieEntree(source)
+
+    const categorie = searchParams.get('categorie')
+    if (categorie) setCategorie(categorie)
+
+    const sousCat = searchParams.get('sous_categorie')
+    if (sousCat) setSousCategorie(sousCat)
+
+    // Skip step 1 (choix type) si pré-rempli minimum
+    if (target === 'depense' && categorie) setStep(2)
+    else if (target === 'entree' && source) setStep(2)
   }, [searchParams])
 
   // Pré-fetch des inventaires existants (pour détecter une date déjà saisie)

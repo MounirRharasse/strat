@@ -15,6 +15,7 @@ import {
   decomposerChargesFixes30j,
   calculerCouverture6Mois
 } from '@/lib/seuil-rentabilite'
+import { compterAlertesRapide } from '@/lib/audit-saisies'
 import { redirect } from 'next/navigation'
 import DashboardClient from './DashboardClient'
 
@@ -69,7 +70,9 @@ export default async function Dashboard({ searchParams }) {
     { data: transactionsConso6Mois },
     { data: histCa6Mois },
     { data: transactionsChargesFixes6Mois },
-    { count: nbEntreesMois }
+    { count: nbEntreesMois },
+    { data: entrees6Mois },
+    { data: ignoresAudits }
   ] = await Promise.all([
     getAnalysesKPIs({ parametre_id, since, until, parametres: params }),
     getAnalysesKPIs({ parametre_id, since: periodePrec.since, until: periodePrec.until, parametres: params }),
@@ -121,17 +124,17 @@ export default async function Dashboard({ searchParams }) {
       .eq('categorie_pl', 'consommations')
       .gte('date', debut6Mois)
       .lte('date', todayISO),
-    // CA HT 6 mois jusqu'à today (dénominateur sparkline + marge 30j seuil)
+    // CA HT 6 mois jusqu'à today (dénominateur sparkline + marge 30j seuil + audit canal Uber)
     supabase
       .from('historique_ca')
-      .select('date, ca_ht')
+      .select('date, ca_ht, ca_brut, uber, nb_commandes')
       .eq('parametre_id', parametre_id)
       .gte('date', debut6Mois)
       .lte('date', todayISO),
     // Charges fixes 6 mois jusqu'à today (sparkline couverture seuil + 30j seuil + décomposition)
     supabase
       .from('transactions')
-      .select('date, montant_ht, categorie_pl')
+      .select('date, montant_ht, categorie_pl, fournisseur_nom, sous_categorie, id, montant_ttc')
       .eq('parametre_id', parametre_id)
       .in('categorie_pl', CATEGORIES_CHARGES_FIXES)
       .gte('date', debut6Mois)
@@ -142,7 +145,19 @@ export default async function Dashboard({ searchParams }) {
       .select('*', { count: 'exact', head: true })
       .eq('parametre_id', parametre_id)
       .gte('date', moisCourant.since)
-      .lte('date', moisCourant.until)
+      .lte('date', moisCourant.until),
+    // Entrées 6 mois (audit alertes : trous de jours, détection canal)
+    supabase
+      .from('entrees')
+      .select('date, source, montant_ttc')
+      .eq('parametre_id', parametre_id)
+      .gte('date', debut6Mois)
+      .lte('date', todayISO),
+    // Audits ignorés (faux positifs marqués OK par l'utilisateur — sprint Journal)
+    supabase
+      .from('audits_ignores')
+      .select('type, cle')
+      .eq('parametre_id', parametre_id)
   ])
 
   // ───────────────────────────────────────────────────────────────────
@@ -253,6 +268,25 @@ export default async function Dashboard({ searchParams }) {
     margeBruteCeMois
   }
 
+  // ───────────────────────────────────────────────────────────────────
+  // Audit Journal — count alertes pour le bandeau dashboard (commit 3 sprint Journal)
+  // Fenêtre 7 derniers jours pour le compte (alertes actionnables récentes).
+  // ───────────────────────────────────────────────────────────────────
+  const debut7jDate = new Date(now)
+  debut7jDate.setDate(debut7jDate.getDate() - 6)
+  const since7jISO = debut7jDate.toISOString().slice(0, 10)
+  const allTx6Mois = [...(transactionsConso6Mois || []), ...(transactionsChargesFixes6Mois || [])]
+  const auditCount = compterAlertesRapide({
+    since: since7jISO,
+    today: todayISO,
+    historique: histCa6Mois || [],
+    transactions: allTx6Mois,
+    entrees: entrees6Mois || [],
+    transactionsHistorique: allTx6Mois,
+    joursFermesSemaine: params?.jours_fermes_semaine || [],
+    ignores: ignoresAudits || []
+  })
+
   const data = {
     label,
     since,
@@ -290,6 +324,7 @@ export default async function Dashboard({ searchParams }) {
     variations,
     resteAFaire,
     accesRapide,
+    auditCount,
     lastSyncDate: derniereDate?.date || null,
     historique: histPeriode || [],
     nbJours: periodeActuelle.nbJours,

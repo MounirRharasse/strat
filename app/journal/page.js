@@ -112,6 +112,13 @@ export default async function Journal({ searchParams }) {
     calendrier30j.push({ date: dateISO, etat })
   }
 
+  // Sous-ensembles 30j roulants pour permettre le focus jour précis
+  // (tap sur calendrier → afficher saisies de n'importe quel jour des 30 derniers,
+  // y compris hors période sélectionnée). Bandwidth ~30 jours, acceptable V1.
+  const transactions30j = (transactions6Mois || []).filter(t => t.date >= debut30j && t.date <= today)
+  const entrees30j = (entrees6Mois || []).filter(e => e.date >= debut30j && e.date <= today)
+  const historique30j = (historique6Mois || []).filter(h => h.date >= debut30j && h.date <= today)
+
   return (
     <JournalClient
       transactions={transactionsPeriode || []}
@@ -125,6 +132,9 @@ export default async function Journal({ searchParams }) {
       audit={audit}
       calendrier30j={calendrier30j}
       joursFermesConfigures={joursFermesSemaine.length > 0}
+      transactions30j={transactions30j}
+      entrees30j={entrees30j}
+      historique30j={historique30j}
     />
   )
 }
