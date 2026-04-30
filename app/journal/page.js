@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase'
 import { getDailyKPIs } from '@/lib/popina'
 import { getParametreIdFromSession } from '@/lib/auth'
 import { getAujourdhui, getHier, getPeriodeFromFiltreId } from '@/lib/periods'
-import { auditerJournal } from '@/lib/audit-saisies'
+import { auditerJournal, evaluerJour, calculerMediansUberParJourSemaine } from '@/lib/audit-saisies'
 import { redirect } from 'next/navigation'
 import JournalClient from './JournalClient'
 
@@ -59,7 +59,7 @@ export default async function Journal({ searchParams }) {
       .select('date, source, montant_ttc')
       .eq('parametre_id', parametre_id).gte('date', debut6Mois).lte('date', today),
     supabase.from('historique_ca')
-      .select('date, ca_brut, uber')
+      .select('date, ca_brut, uber, especes')
       .eq('parametre_id', parametre_id).gte('date', debut6Mois).lte('date', today),
     supabase.from('audits_ignores')
       .select('type, cle')
@@ -86,38 +86,31 @@ export default async function Journal({ searchParams }) {
   })
 
   // ─────────────────────────────────────────────────────────────────────
-  // Calendrier heat-map 30 jours roulants (indépendant du filtre)
+  // Calendrier heat-map 30 jours — 4 états (decision Mounir 2026-04-30).
+  // Fenêtre [today-30, today-1] : today exclu (service en cours, faux rouge).
+  // Évaluation par jour via evaluerJour(), médianes Uber pré-calculées une fois.
   // ─────────────────────────────────────────────────────────────────────
-  const datesSaisies30j = new Set()
-  for (const h of (historique6Mois || [])) {
-    if (h.date >= debut30j && (h.ca_brut || 0) > 0) datesSaisies30j.add(h.date)
-  }
-  for (const t of (transactions6Mois || [])) {
-    if (t.date >= debut30j) datesSaisies30j.add(t.date)
-  }
-  for (const e of (entrees6Mois || [])) {
-    if (e.date >= debut30j) datesSaisies30j.add(e.date)
-  }
+  const mediansUberParJourSemaine = calculerMediansUberParJourSemaine(historique6Mois || [])
 
   const calendrier30j = []
-  for (let i = 29; i >= 0; i--) {
+  for (let i = 30; i >= 1; i--) {
     const d = new Date(now)
     d.setDate(d.getDate() - i)
     const dateISO = d.toISOString().slice(0, 10)
-    const dow = d.getDay()
-    let etat
-    if (joursFermesSemaine.includes(dow)) etat = 'ferme'
-    else if (datesSaisies30j.has(dateISO)) etat = 'complet'
-    else etat = 'manquant'
-    calendrier30j.push({ date: dateISO, etat })
+    const evaluation = evaluerJour({
+      jour: dateISO,
+      transactions: transactions6Mois || [],
+      entrees: entrees6Mois || [],
+      historique: historique6Mois || [],
+      joursFermesSemaine,
+      mediansUberParJourSemaine
+    })
+    calendrier30j.push({
+      date: dateISO,
+      etat: evaluation.etat,
+      detail: evaluation.detail
+    })
   }
-
-  // Sous-ensembles 30j roulants pour permettre le focus jour précis
-  // (tap sur calendrier → afficher saisies de n'importe quel jour des 30 derniers,
-  // y compris hors période sélectionnée). Bandwidth ~30 jours, acceptable V1.
-  const transactions30j = (transactions6Mois || []).filter(t => t.date >= debut30j && t.date <= today)
-  const entrees30j = (entrees6Mois || []).filter(e => e.date >= debut30j && e.date <= today)
-  const historique30j = (historique6Mois || []).filter(h => h.date >= debut30j && h.date <= today)
 
   return (
     <JournalClient
@@ -132,9 +125,6 @@ export default async function Journal({ searchParams }) {
       audit={audit}
       calendrier30j={calendrier30j}
       joursFermesConfigures={joursFermesSemaine.length > 0}
-      transactions30j={transactions30j}
-      entrees30j={entrees30j}
-      historique30j={historique30j}
     />
   )
 }

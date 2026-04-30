@@ -1,15 +1,19 @@
 'use client'
 
 // Heat-map calendrier 30 jours pour /journal.
-// 3 états V1 (cf. décision flou 3 du 2026-04-30) :
-//   - complet : au moins 1 saisie ce jour (CA OU transaction OU entrée)
+// 4 états V1 (decision Mounir 2026-04-30, ré-introduction de 'partiel') :
+//   - complet  : tous les canaux attendus ont une saisie ce jour
+//   - partiel  : au moins 1 saisie ET au moins 1 canal attendu manquant
+//                (en V1 = Uber attendu mais 0€ alors que médiane ≥ 50€)
 //   - manquant : jour ouvré sans aucune saisie
-//   - ferme : jour de fermeture hebdomadaire (parametres.jours_fermes_semaine)
+//   - ferme    : jour de fermeture hebdomadaire (parametres.jours_fermes_semaine)
 //
 // Layout mobile 448px : grille 7 colonnes alignée sur lundi.
+// Fenêtre 30j roulants [today-30, today-1] (today exclu : service en cours).
 
 const COULEURS = {
   complet: 'bg-green-600 hover:bg-green-500',
+  partiel: 'bg-orange-500 hover:bg-orange-400',
   manquant: 'bg-red-700 hover:bg-red-600',
   ferme: 'bg-gray-700 hover:bg-gray-600'
 }
@@ -67,9 +71,12 @@ export default function CalendrierHeatMap({ data, selectedDate, onSelect }) {
         })}
       </div>
 
-      <div className="flex justify-center gap-4 mt-3 text-[10px] text-gray-500">
+      <div className="flex justify-center flex-wrap gap-x-3 gap-y-1 mt-3 text-[10px] text-gray-500">
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-sm bg-green-600"></span>complet
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-sm bg-orange-500"></span>partiel
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-sm bg-red-700"></span>manquant

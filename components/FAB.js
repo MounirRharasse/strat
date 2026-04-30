@@ -187,9 +187,9 @@ export default function FAB() {
     const sousCat = searchParams.get('sous_categorie')
     if (sousCat) setSousCategorie(sousCat)
 
-    // Skip step 1 (choix type) si pré-rempli minimum
-    if (target === 'depense' && categorie) setStep(2)
-    else if (target === 'entree' && source) setStep(2)
+    // Pas de skip de step : le step 1 = saisie du montant (info que l'utilisateur
+    // a en main quand il tape "Saisir Uber" depuis une alerte). Les valeurs
+    // pré-remplies ci-dessus servent les steps suivants (source/categorie/sous_cat).
   }, [searchParams])
 
   // Pré-fetch des inventaires existants (pour détecter une date déjà saisie)

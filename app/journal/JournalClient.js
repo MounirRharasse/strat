@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import PeriodFilter from '@/components/PeriodFilter'
 import CalendrierHeatMap from '@/components/CalendrierHeatMap'
+import PanneauDetailJour from '@/components/PanneauDetailJour'
 
 const CATEGORIE_LABELS = {
   consommations: 'Consommations',
@@ -140,8 +141,7 @@ function AlerteCard({ alerte, onIgnore }) {
 
 export default function JournalClient({
   transactions, entrees, historique, kpis, today, yesterday,
-  periode, type, audit, calendrier30j, joursFermesConfigures,
-  transactions30j, entrees30j, historique30j
+  periode, type, audit, calendrier30j, joursFermesConfigures
 }) {
   const [localEntrees, setLocalEntrees] = useState(entrees)
   const [deletingId, setDeletingId] = useState(null)
@@ -345,73 +345,8 @@ export default function JournalClient({
         <Link href={'/journal?periode=' + periode + '&type=depenses'} className={'flex-1 text-center text-xs py-2 rounded-xl border ' + (type === 'depenses' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Dépenses</Link>
       </div>
 
-      {/* SAISIES DU JOUR FOCUS (depuis tap calendrier) */}
-      {selectedJour && (() => {
-        const histDuJour = (historique30j || []).filter(h => h.date === selectedJour && ((h.ca_brut || 0) > 0 || (h.uber || 0) > 0))
-        const entreesDuJour = (entrees30j || []).filter(e => e.date === selectedJour)
-        const txDuJour = (transactions30j || []).filter(t => t.date === selectedJour)
-        const aucuneSaisie = histDuJour.length === 0 && entreesDuJour.length === 0 && txDuJour.length === 0
-        const labelDate = new Date(selectedJour + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
-
-        return (
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2 px-1">
-              <span className="text-sm font-medium text-gray-300 capitalize">Saisies du {labelDate}</span>
-              <button
-                onClick={() => setSelectedJour(null)}
-                className="text-xs text-gray-500 hover:text-gray-300"
-              >
-                ✕ tout voir
-              </button>
-            </div>
-            <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
-              {aucuneSaisie ? (
-                <div className="px-4 py-6 text-center">
-                  <p className="text-sm text-gray-400">Aucune saisie ce jour</p>
-                </div>
-              ) : (
-                <>
-                  {histDuJour.map(h => (
-                    <div key={'h-' + h.date} className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 last:border-0">
-                      <div className="w-9 h-9 rounded-xl bg-green-950 border border-green-900 flex items-center justify-center">💰</div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">CA caisse</p>
-                        {h.uber > 0 && <p className="text-xs text-orange-400">+ Uber Eats : {fmt(h.uber)}</p>}
-                      </div>
-                      <p className="text-sm font-mono font-semibold text-green-400">+{fmt(h.ca_brut)}</p>
-                    </div>
-                  ))}
-                  {entreesDuJour.map(e => (
-                    <div key={'e-' + (e.id || e.date + e.source)} className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 last:border-0">
-                      <div className="w-9 h-9 rounded-xl bg-green-950 border border-green-900 flex items-center justify-center">
-                        {SOURCE_ICONS[e.source] || '💰'}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{SOURCE_LABELS[e.source] || e.source}</p>
-                        <p className="text-xs text-green-400">Entrée manuelle</p>
-                      </div>
-                      <p className="text-sm font-mono font-semibold text-green-400">+{fmt(e.montant_ttc)}</p>
-                    </div>
-                  ))}
-                  {txDuJour.map(t => (
-                    <div key={'t-' + t.id} className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 last:border-0">
-                      <div className="w-9 h-9 rounded-xl bg-gray-800 flex items-center justify-center">{getIcon(t.categorie_pl)}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{t.fournisseur_nom}</p>
-                        <p className={'text-xs mt-0.5 ' + (CATEGORIE_COLORS[t.categorie_pl] || 'text-gray-400')}>{CATEGORIE_LABELS[t.categorie_pl] || t.categorie_pl}</p>
-                      </div>
-                      <p className="text-sm font-mono font-semibold text-red-400">-{fmt(t.montant_ttc)}</p>
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-          </div>
-        )
-      })()}
-
       {/* AUJOURD'HUI */}
-      {!selectedJour && periode === 'aujourdhui' && (
+      {periode === 'aujourdhui' && (
         <div className="mb-4">
           <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
 
@@ -470,7 +405,7 @@ export default function JournalClient({
       )}
 
       {/* JOURS PRECEDENTS */}
-      {!selectedJour && periode !== 'aujourdhui' && (
+      {periode !== 'aujourdhui' && (
         <div>
           {showEntrees && (historique || []).filter(h => h.uber > 0).length > 0 && (
             <div className="mb-4">
@@ -543,6 +478,15 @@ export default function JournalClient({
           />
         </div>
       </div>
+
+      {/* Panneau détail jour (modal bottom-sheet, pattern DrillDown) */}
+      {selectedJour && (
+        <PanneauDetailJour
+          date={selectedJour}
+          evaluation={(calendrier30j || []).find(c => c.date === selectedJour)}
+          onClose={() => setSelectedJour(null)}
+        />
+      )}
     </div>
   )
 }
