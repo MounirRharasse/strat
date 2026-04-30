@@ -236,6 +236,20 @@ Sur les 23 irritants recensés ci-dessus :
 
 ---
 
+## 27. Faux positif anomalies fournisseurs bimodaux
+
+- **Découvert** : 30 avril 2026 lors du test brief V1
+- **Cas** : fournisseurs avec 2 clusters de montants (ex: Appart City :
+  loyer mensuel ~1200€ + frais ponctuels ~50-100€)
+- **Symptôme** : detecterAnomaliesMontant calcule la médiane sur tous les
+  montants (~660€ dans cet exemple), donc tout montant gros (1100€+) ou
+  petit (<200€) ressort comme "anormal"
+- **Impact** : 1-2 faux positifs par mois dans le journal et brief
+- **Pistes** : clustering, détection bimodalité, pondération par catégorie
+- **Priorité** : V1.1 (faible, ton "à vérifier" ne trompe pas le user)
+
+---
+
 ## Historique
 
 - **v1.0 (26 avril 2026)** : capture initiale du document de l'associée + retours Mounir de la session du 26 avril
