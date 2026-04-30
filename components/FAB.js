@@ -159,21 +159,20 @@ export default function FAB() {
     const target = searchParams?.get('openFab')
     if (!target) return
 
+    let valide = true
     if (target === 'inventaire') {
       setOpen(true)
       setType('inventaire')
-      return
-    }
-
-    if (target === 'entree') {
+    } else if (target === 'entree') {
       setOpen(true)
       setType('entree')
     } else if (target === 'depense') {
       setOpen(true)
       setType('depense')
     } else {
-      return
+      valide = false
     }
+    if (!valide) return
 
     const dateParam = searchParams.get('date')
     if (dateParam) setDate(dateParam)
@@ -190,7 +189,14 @@ export default function FAB() {
     // Pas de skip de step : le step 1 = saisie du montant (info que l'utilisateur
     // a en main quand il tape "Saisir Uber" depuis une alerte). Les valeurs
     // pré-remplies ci-dessus servent les steps suivants (source/categorie/sous_cat).
-  }, [searchParams])
+
+    // Nettoyer l'URL : les params ont été consommés dans le state local du FAB.
+    // Sans ce cleanup, un refresh ou une nav arrière re-déclencherait l'ouverture
+    // du FAB en boucle (cf. décision Mounir 2026-04-30 polish 1).
+    if (typeof window !== 'undefined') {
+      router.replace(window.location.pathname, { scroll: false })
+    }
+  }, [searchParams, router])
 
   // Pré-fetch des inventaires existants (pour détecter une date déjà saisie)
   useEffect(() => {
