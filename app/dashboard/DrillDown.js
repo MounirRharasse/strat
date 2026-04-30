@@ -60,6 +60,50 @@ function Courbe({ vals, color = '#3b82f6' }) {
   )
 }
 
+// Courbe couverture seuil avec ligne 100% en pointillé. Couleur courbe selon
+// la couverture actuelle (vert si ≥ 100%, rouge sinon).
+function SeuilCourbe({ data }) {
+  if (!data || data.length < 2) {
+    return (
+      <div className="h-20 flex items-center justify-center">
+        <p className="text-xs text-gray-500">Pas assez de donnees</p>
+      </div>
+    )
+  }
+  const W = 300
+  const H = 80
+  const pad = 12
+  const objectif = 100
+  const vals = data.map(d => d.couverture)
+  const max = Math.max(...vals, objectif * 1.1, 1)
+  const min = Math.min(...vals, 0)
+  const range = max - min || 1
+
+  const pts = vals.map((v, i) => ({
+    x: pad + (i / (vals.length - 1)) * (W - pad * 2),
+    y: H - pad - ((v - min) / range) * (H - pad * 2)
+  }))
+
+  let path = `M ${pts[0].x} ${pts[0].y}`
+  for (let i = 1; i < pts.length; i++) {
+    const cpx = (pts[i - 1].x + pts[i].x) / 2
+    path += ` C ${cpx} ${pts[i - 1].y} ${cpx} ${pts[i].y} ${pts[i].x} ${pts[i].y}`
+  }
+
+  const yObjectif = H - pad - ((objectif - min) / range) * (H - pad * 2)
+  const valActuel = vals[vals.length - 1]
+  const couleur = valActuel >= objectif ? '#22c55e' : '#ef4444'
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 80 }}>
+      <line x1={pad} y1={yObjectif} x2={W - pad} y2={yObjectif} stroke="#22c55e" strokeWidth="1" strokeDasharray="4 4" opacity="0.6" />
+      <text x={W - pad - 2} y={yObjectif - 4} fontSize="9" fill="#22c55e" textAnchor="end" opacity="0.8">100%</text>
+      <path d={path} fill="none" stroke={couleur} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r="4" fill={couleur} />
+    </svg>
+  )
+}
+
 // Courbe food cost avec ligne objectif en pointillé. Couleur courbe selon
 // la valeur actuelle vs objectif (rouge si > obj, vert sinon).
 function FoodCostCourbe({ data, objectif }) {
@@ -147,6 +191,7 @@ function VariationFoodCostBadge({ pts }) {
 
 export default function DrillDown({ type, data, params, onClose }) {
   const [foodcostTooltipOpen, setFoodcostTooltipOpen] = useState(false)
+  const [seuilTooltipOpen, setSeuilTooltipOpen] = useState(false)
 
   const objectifCA = params?.objectif_ca || 45000
   const objectifJour = Math.round(objectifCA / 30)
@@ -182,11 +227,14 @@ export default function DrillDown({ type, data, params, onClose }) {
     : null
   const moisActuel = foodCost6Mois.length > 0 ? foodCost6Mois[foodCost6Mois.length - 1] : null
 
-  const tauxMargeVariable = caHT > 0 ? ((caHT - caHT * (foodCostP / 100)) / caHT * 100) : 66
-  const seuilJournalier = chargesFixesMensuelles > 0 ? Math.round(chargesFixesMensuelles / 30 / (tauxMargeVariable / 100)) : 0
-  const seuilMensuel = chargesFixesMensuelles > 0 ? Math.round(chargesFixesMensuelles / (tauxMargeVariable / 100)) : 0
-  const seuilAtteint = caBrut >= seuilJournalier
-  const seuilEcart = caBrut - seuilJournalier
+  // Spécifique seuil (refondu commit 3)
+  const seuil = data?.seuil || { etat: 'donnees-insuffisantes' }
+  const seuilCouvertureMois = seuil.couverture6Mois || []
+  const seuilDecomposition = seuil.decomposition || []
+  const seuilMoisActuel = seuilCouvertureMois.length > 0 ? seuilCouvertureMois[seuilCouvertureMois.length - 1] : null
+  const seuilMeilleurMois = seuilCouvertureMois.length > 0
+    ? seuilCouvertureMois.reduce((max, m) => (m.couverture > 0 && (max === null || m.couverture > max.couverture)) ? m : max, null)
+    : null
 
   const objectifPeriode = objectifJour * (nbJours || 1)
   const tauxAtteinte = objectifPeriode > 0 ? Math.round(caBrut / objectifPeriode * 100) : 0
@@ -443,51 +491,187 @@ export default function DrillDown({ type, data, params, onClose }) {
   )
 
   // ───────────────────────────────────────────────────────────────────
-  // Drill SEUIL — conservé tel quel, refonte au commit 3.
+  // Drill SEUIL — refondu pour persona 10h café (commit 3).
+  // 5 sections : hero + ⓘ tooltip · évolution couverture · décomposition
+  // charges · calcul pédagogique · CTA "Voir mes charges".
   // ───────────────────────────────────────────────────────────────────
-  const renderSeuil = () => (
-    <>
-      <div className="mb-4">
-        <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Seuil de rentabilite</p>
-        <p className={"text-4xl font-bold " + (seuilAtteint ? 'text-green-400' : 'text-red-400')}>
-          {seuilAtteint ? 'Atteint ✓' : 'Non atteint'}
-        </p>
-        <span className={"text-xs px-2 py-0.5 rounded-full border mt-2 inline-block " + (seuilAtteint ? 'bg-green-950 text-green-400 border-green-900' : 'bg-red-950 text-red-400 border-red-900')}>
-          {seuilEcart >= 0 ? '+' : ''}{fmt(seuilEcart)} vs seuil
-        </span>
-      </div>
-      <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden mb-4">
-        <div className="px-4 py-2 bg-blue-950/40 border-b border-blue-900/30">
-          <p className="text-xs text-blue-400 font-mono">Seuil = Charges fixes / Taux marge sur CV</p>
+  const renderSeuil = () => {
+    if (seuil.etat === 'donnees-insuffisantes') {
+      return (
+        <div className="bg-gray-800 rounded-2xl p-5 text-center">
+          <p className="text-sm text-gray-300 mb-3 leading-relaxed">
+            Saisis tes charges fixes (loyer, salaires, énergie...) pour calculer ton seuil de rentabilité.
+          </p>
+          <Link
+            href="/dashboard?openFab=depense"
+            className="inline-block bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-xl"
+          >
+            Saisir une charge
+          </Link>
         </div>
-        {[
-          { label: 'Charges fixes mensuelles', val: fmt(chargesFixesMensuelles) },
-          { label: 'Taux marge sur CV', val: tauxMargeVariable.toFixed(0) + '%' },
-          { label: 'Seuil mensuel', val: fmt(seuilMensuel), bold: true },
-          { label: 'Seuil journalier (÷30)', val: fmt(seuilJournalier), highlight: true },
-        ].map((r, i) => (
-          <div key={i} className={"flex justify-between items-center px-4 py-3 border-b border-gray-800 last:border-0 " + (r.highlight ? 'bg-gray-800' : '')}>
-            <span className={"text-sm " + (r.bold || r.highlight ? 'font-semibold text-white' : 'text-gray-400')}>{r.label}</span>
-            <span className={"font-mono font-semibold " + (r.highlight ? 'text-lg text-white' : 'text-sm text-gray-300')}>{r.val}</span>
+      )
+    }
+
+    if (seuil.etat === 'marge-negative') {
+      return (
+        <div className="bg-red-950/40 border border-red-900 rounded-2xl p-5">
+          <p className="text-sm text-red-300 font-semibold mb-2">Coûts variables {'>'} CA</p>
+          <p className="text-sm text-gray-300 leading-relaxed">
+            Tes coûts variables dépassent ton CA des 30 derniers jours. Vérifie tes saisies récentes (food cost, ventes...).
+          </p>
+        </div>
+      )
+    }
+
+    const statut = seuil.statut
+    const colorText = statut === 'vert' ? 'text-green-400' : statut === 'jaune' ? 'text-yellow-400' : 'text-red-400'
+    const statutLabel = statut === 'vert' ? 'Tu couvres tes charges'
+      : statut === 'jaune' ? 'Sur la bonne voie'
+      : 'Pas encore couvert'
+
+    const projection = seuil.projectionFinMois
+    const seuilMensuel = seuil.seuilMensuel
+    const manque = (projection != null && seuilMensuel != null && projection < seuilMensuel)
+      ? (seuilMensuel - projection)
+      : 0
+
+    let sousLigne
+    if (periode.filtreId === 'ce-mois' && projection != null && seuilMensuel != null) {
+      if (statut === 'rouge' && manque > 0) {
+        sousLigne = `Au rythme actuel : ${fmt(projection)} fin de mois (seuil ${fmt(seuilMensuel)}, manque ${fmt(manque)})`
+      } else {
+        sousLigne = `Au rythme actuel : ${fmt(projection)} fin de mois (seuil ${fmt(seuilMensuel)})`
+      }
+    } else {
+      sousLigne = `Seuil sur la période : ${fmt(seuil.seuilPeriode)}`
+    }
+
+    const totalDecompoCharges = seuilDecomposition.reduce((s, d) => s + d.total, 0)
+    const seuilProrata = seuil.seuilPeriode
+
+    return (
+      <>
+        {/* Section 1 — Hero contextuel + ⓘ pédagogique */}
+        <div className="mb-5">
+          <div className="flex justify-between items-start mb-2">
+            <p className="text-xs text-gray-500 uppercase tracking-widest">Seuil de rentabilité · {periode.label || ''}</p>
+            <button
+              onClick={() => setSeuilTooltipOpen(o => !o)}
+              type="button"
+              className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border bg-blue-950 text-blue-400 border-blue-900"
+            >
+              <span className="text-sm leading-none">ⓘ</span>
+              <span>explication</span>
+            </button>
           </div>
-        ))}
-      </div>
-      <div className="bg-blue-950/30 border border-blue-900/30 border-l-4 border-l-blue-500 rounded-xl px-4 py-3 mb-4">
-        <p className="text-xs text-blue-400 uppercase tracking-wider mb-1">Lecture</p>
-        <p className="text-sm text-gray-300 leading-relaxed">
-          {seuilAtteint
-            ? "Aujourd'hui ton CA de " + fmt(caBrut) + " depasse ton seuil de " + fmt(seuilJournalier) + " de " + fmt(seuilEcart) + ". Tu couvres tes charges fixes et tu generes un benefice."
-            : "Aujourd'hui ton CA de " + fmt(caBrut) + " n'atteint pas encore le seuil de " + fmt(seuilJournalier) + ". Il manque " + fmt(-seuilEcart) + " pour couvrir tes charges."}
-        </p>
-      </div>
-      {chargesFixesMensuelles === 0 && (
-        <div className="bg-yellow-950/30 border border-yellow-900/30 rounded-xl px-4 py-3">
-          <p className="text-xs text-yellow-500 mb-1">Donnees insuffisantes</p>
-          <p className="text-xs text-gray-400">Saisis tes charges fixes via le bouton + pour un calcul precis.</p>
+          <p className={"text-3xl font-bold " + colorText}>{statutLabel}</p>
+          <p className="text-xs text-gray-500 mt-1 leading-relaxed">{sousLigne}</p>
+
+          {seuilTooltipOpen && (
+            <div className="mt-3 bg-blue-950/30 border border-blue-900/30 border-l-4 border-l-blue-500 rounded-xl px-4 py-3">
+              <p className="text-sm text-gray-300 leading-relaxed">
+                Le seuil de rentabilité, c'est le chiffre d'affaires minimum que ton restaurant doit faire pour couvrir tes charges fixes (loyer, salaires, énergie...) et commencer à dégager un bénéfice.
+              </p>
+              <p className="text-sm text-gray-300 leading-relaxed mt-3">
+                On le calcule à partir de tes charges fixes des 30 derniers jours et de ta marge restante après matières premières.
+              </p>
+            </div>
+          )}
         </div>
-      )}
-    </>
-  )
+
+        {/* Section 2 — Évolution 6 mois (couverture mensuelle) */}
+        <div className="mb-5 pt-4 border-t border-gray-800">
+          <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">Couverture mensuelle sur 6 mois</p>
+          <SeuilCourbe data={seuilCouvertureMois} />
+          <div className="flex justify-between mt-2 text-xs">
+            {seuilMeilleurMois && seuilMeilleurMois.couverture > 0 ? (
+              <span className="text-green-400">
+                {seuilMeilleurMois.mois} : {Math.round(seuilMeilleurMois.couverture)}% · meilleur mois
+              </span>
+            ) : <span></span>}
+            {seuilMoisActuel && seuilMoisActuel.couverture > 0 && (
+              <span className={seuilMoisActuel.couverture >= 100 ? 'text-green-400' : 'text-red-400'}>
+                {seuilMoisActuel.mois} : {Math.round(seuilMoisActuel.couverture)}% · actuel
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Section 3 — Décomposition charges fixes (30j roulants) */}
+        {seuilDecomposition.length > 0 && (
+          <div className="mb-5 pt-4 border-t border-gray-800">
+            <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">
+              D'où viennent tes {fmt(seuil.chargesFixes30j)} de charges ?
+            </p>
+            <div className="space-y-3">
+              {seuilDecomposition.map((d, i) => (
+                <div key={d.macroLabel}>
+                  <div className="flex justify-between items-baseline mb-1">
+                    <span className="text-sm text-gray-300">{d.macroLabel}</span>
+                    <span className="text-sm font-mono">
+                      {fmt(d.total)} <span className="text-xs text-gray-500 ml-1">{d.pct}%</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className={"h-full rounded-full " + COULEURS_DECOMPOSITION[i % COULEURS_DECOMPOSITION.length]}
+                      style={{ width: d.pct + '%' }}
+                    ></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-800">
+              <span className="text-xs text-gray-500 uppercase tracking-wider">Total 30 derniers jours</span>
+              <span className="text-sm font-mono font-semibold text-white">{fmt(totalDecompoCharges)}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Section 4 — Comprendre le calcul (pédagogie) */}
+        <div className="mb-5 pt-4 border-t border-gray-800">
+          <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">Comment on calcule ton seuil</p>
+          <div className="bg-gray-800 rounded-xl p-4 space-y-2 font-mono text-sm">
+            <div className="flex justify-between text-gray-300">
+              <span className="text-xs">Charges fixes (30 derniers jours)</span>
+              <span>{fmt(seuil.chargesFixes30j)}</span>
+            </div>
+            <div className="flex justify-between text-gray-300">
+              <span className="text-xs">Marge après matières premières</span>
+              <span>{(seuil.margeBrute30j || 0).toFixed(0)} %</span>
+            </div>
+            <div className="border-t border-gray-700 pt-2 mt-2 flex justify-between text-white font-semibold">
+              <span className="text-xs">Seuil mensuel à atteindre</span>
+              <span>{fmt(seuilMensuel)}</span>
+            </div>
+            <div className="flex justify-between text-gray-300">
+              <span className="text-xs">Soit par jour</span>
+              <span>{fmt((seuilMensuel || 0) / 30)}</span>
+            </div>
+          </div>
+          {periode.filtreId === 'ce-mois' && periode.nbJours && (
+            <p className="text-xs text-gray-400 mt-3 leading-relaxed">
+              À J{periode.nbJours} du mois, tu dois avoir fait au moins {fmt(seuilProrata)} (prorata).
+            </p>
+          )}
+        </div>
+
+        {/* Section 5 — CTA "Voir mes charges" */}
+        <div className="bg-blue-950/40 border border-blue-900 rounded-2xl p-4 mb-3">
+          <p className="text-sm text-blue-400 font-semibold mb-1">Voir mes charges fixes en détail</p>
+          <p className="text-xs text-gray-300 mb-3 leading-relaxed">
+            Explore tes charges par fournisseur dans Sorties pour identifier où réduire.
+          </p>
+          <Link
+            href={`/analyses?onglet=sorties&periode=${periode.filtreId || 'ce-mois'}`}
+            className="inline-block bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-blue-500 transition"
+          >
+            Voir mes charges →
+          </Link>
+        </div>
+      </>
+    )
+  }
 
   const titre = type === 'ca'
     ? "Détail · " + (periode.label || '')

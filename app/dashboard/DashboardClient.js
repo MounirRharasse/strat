@@ -67,12 +67,9 @@ export default function DashboardClient({ data, params, periode }) {
   const resteAFaire = data?.resteAFaire
   const lastSyncDate = data?.lastSyncDate
 
-  const chargesFixesMensuelles = data?.chargesFixesMensuelles || 0
-  const tauxMargeVariable = caHT > 0 ? ((caHT - caHT * (foodCostP / 100)) / caHT * 100) : 66
-  const seuilJournalier = chargesFixesMensuelles > 0 ? Math.round(chargesFixesMensuelles / 30 / (tauxMargeVariable / 100)) : 0
-  const caJour = data?.ca?.brut || 0
-  const seuilAtteint = seuilJournalier > 0 && caJour >= seuilJournalier
-  const seuilEcart = caJour - seuilJournalier
+  const seuil = data?.seuil || { etat: 'donnees-insuffisantes' }
+  const couverture6Mois = seuil.couverture6Mois || []
+  const seuilCouvertureSparkline = couverture6Mois.map(m => m.couverture)
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4 max-w-md mx-auto pb-24">
@@ -152,37 +149,91 @@ export default function DashboardClient({ data, params, periode }) {
         <p className="text-xs text-gray-600 mt-2">Tap pour voir d'où vient ce chiffre ›</p>
       </div>
 
-      {/* SEUIL — sera refondu au commit 2 */}
-      {seuilJournalier > 0 && (
-        <div onClick={() => setDrill('seuil')} className="bg-gray-900 rounded-2xl p-4 mb-3 border border-gray-800 cursor-pointer hover:border-gray-600 transition">
-          <div className="flex justify-between items-start mb-3">
-            <div>
-              <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">Seuil de rentabilite</p>
-              <p className={"text-2xl font-bold " + (seuilAtteint ? 'text-green-400' : 'text-red-400')}>
-                {seuilAtteint ? 'Atteint' : 'Non atteint'}
-              </p>
-            </div>
-            <div className="text-right">
-              <span className={"text-xs px-2 py-1 rounded-full border " + (seuilAtteint ? 'bg-green-950 text-green-400 border-green-900' : 'bg-red-950 text-red-400 border-red-900')}>
-                {seuilEcart >= 0 ? '+' : ''}{fmt(seuilEcart)}
-              </span>
-              <p className="text-xs text-gray-500 mt-1">Seuil : {fmt(seuilJournalier)}/j</p>
-              <p className="text-gray-600 text-xs mt-1">Tap ›</p>
-            </div>
-          </div>
-          <div className="h-2 bg-gray-800 rounded-full overflow-hidden relative">
-            <div className={"h-2 rounded-full " + (seuilAtteint ? 'bg-green-500' : 'bg-red-500')}
-              style={{ width: Math.min((caJour / (seuilJournalier * 1.5)) * 100, 100) + '%' }}></div>
-            <div className="absolute top-0 h-2 w-0.5 bg-white opacity-60"
-              style={{ left: Math.min((seuilJournalier / (seuilJournalier * 1.5)) * 100, 100) + '%' }}></div>
-          </div>
-          <div className="flex justify-between mt-1">
-            <span className="text-xs text-gray-600">0€</span>
-            <span className="text-xs text-gray-400">Seuil {fmt(seuilJournalier)}</span>
-            <span className="text-xs text-gray-600">CA {fmt(caJour)}</span>
-          </div>
+      {/* SEUIL DE RENTABILITÉ — refondu pour persona 10h café (commit 3) */}
+      {seuil.etat === 'donnees-insuffisantes' && (
+        <div className="bg-gray-900 rounded-2xl p-4 mb-3 border border-gray-800">
+          <p className="text-xs text-gray-400 uppercase tracking-widest mb-2">Seuil de rentabilité</p>
+          <p className="text-sm text-gray-300 mb-3 leading-relaxed">
+            Saisis tes charges fixes (loyer, salaires, énergie...) pour calculer ton seuil de rentabilité.
+          </p>
+          <Link
+            href="/dashboard?openFab=depense"
+            className="inline-block bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-blue-500 transition"
+          >
+            Saisir une charge
+          </Link>
         </div>
       )}
+
+      {seuil.etat === 'marge-negative' && (
+        <div className="bg-red-950/40 border border-red-900 rounded-2xl p-4 mb-3">
+          <p className="text-xs text-red-400 uppercase tracking-widest mb-2">Seuil de rentabilité</p>
+          <p className="text-sm text-red-300 font-semibold mb-1">Coûts variables {'>'} CA</p>
+          <p className="text-xs text-gray-300 leading-relaxed">
+            Tes coûts variables dépassent ton CA des 30 derniers jours. Vérifie tes saisies récentes.
+          </p>
+        </div>
+      )}
+
+      {seuil.etat === 'ok' && (() => {
+        const statut = seuil.statut
+        const colorText = statut === 'vert' ? 'text-green-400' : statut === 'jaune' ? 'text-yellow-400' : 'text-red-400'
+        const colorBar = statut === 'vert' ? 'bg-green-500' : statut === 'jaune' ? 'bg-yellow-500' : 'bg-red-500'
+        const colorSparkline = statut === 'vert' ? '#22c55e' : statut === 'jaune' ? '#eab308' : '#ef4444'
+        const statutLabel = statut === 'vert' ? 'Tu couvres tes charges'
+          : statut === 'jaune' ? 'Sur la bonne voie'
+          : 'Pas encore couvert'
+
+        const proratPct = seuil.seuilPeriode > 0
+          ? Math.min((caBrut / seuil.seuilPeriode) * 100, 100)
+          : 0
+
+        const projection = seuil.projectionFinMois
+        const seuilMensuel = seuil.seuilMensuel
+        const manque = (projection != null && seuilMensuel != null && projection < seuilMensuel)
+          ? (seuilMensuel - projection)
+          : 0
+
+        let sousLigne
+        if (periode === 'ce-mois' && projection != null && seuilMensuel != null) {
+          if (statut === 'rouge' && manque > 0) {
+            sousLigne = `Au rythme actuel : ${fmt(projection)} fin de mois (seuil ${fmt(seuilMensuel)}, manque ${fmt(manque)})`
+          } else {
+            sousLigne = `Au rythme actuel : ${fmt(projection)} fin de mois (seuil ${fmt(seuilMensuel)})`
+          }
+        } else {
+          sousLigne = `Seuil sur la période : ${fmt(seuil.seuilPeriode)}`
+        }
+
+        return (
+          <div onClick={() => setDrill('seuil')} className="bg-gray-900 rounded-2xl p-4 mb-3 border border-gray-800 cursor-pointer hover:border-gray-600 transition">
+            <div className="flex justify-between items-center mb-2">
+              <p className="text-xs text-gray-400 uppercase tracking-widest">
+                Seuil de rentabilité · {data.label}
+              </p>
+              <Sparkline
+                data={seuilCouvertureSparkline}
+                couleur={colorSparkline}
+                width={60}
+                height={16}
+              />
+            </div>
+            <p className={"text-2xl font-bold " + colorText}>{statutLabel}</p>
+            <p className="text-xs text-gray-500 mt-1 leading-relaxed">{sousLigne}</p>
+
+            <div className="h-2 bg-gray-800 rounded-full overflow-hidden mt-3">
+              <div className={"h-full rounded-full " + colorBar} style={{ width: proratPct + '%' }}></div>
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-xs text-gray-600">0€</span>
+              <span className="text-xs text-gray-400">{fmt(caBrut)} / {fmt(seuil.seuilPeriode)}</span>
+              <span className="text-xs text-gray-600">100%</span>
+            </div>
+
+            <p className="text-xs text-gray-600 mt-2">Tap pour voir le détail ›</p>
+          </div>
+        )
+      })()}
 
       {/* ACCES RAPIDE — sera transformé au commit 3 */}
       <div className="mt-2">

@@ -151,11 +151,16 @@ export default function FAB() {
     return () => clearTimeout(timer)
   }, [fournisseur])
 
-  // Deep link depuis Paramètres : ?openFab=inventaire ouvre directement le FAB en mode inventaire
+  // Deep link : ?openFab=inventaire | depense ouvre directement le FAB
+  // dans le mode correspondant. 'depense' utilisé par l'empty state du Seuil.
   useEffect(() => {
-    if (searchParams?.get('openFab') === 'inventaire') {
+    const target = searchParams?.get('openFab')
+    if (target === 'inventaire') {
       setOpen(true)
       setType('inventaire')
+    } else if (target === 'depense') {
+      setOpen(true)
+      setType('depense')
     }
   }, [searchParams])
 

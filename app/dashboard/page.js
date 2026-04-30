@@ -6,6 +6,15 @@ import { getLabelVariation } from '@/lib/dashboard-comparaison'
 import { regrouperCanaux } from '@/lib/canaux'
 import { decomposerParSousCategorie, topFournisseursConsommations } from '@/lib/food-cost-decomposition'
 import { calculerFoodCost6Mois } from '@/lib/food-cost-historique'
+import {
+  CATEGORIES_CHARGES_FIXES,
+  filtrer30j,
+  calculerSeuil,
+  calculerProjection,
+  computeStatutSeuil,
+  decomposerChargesFixes30j,
+  calculerCouverture6Mois
+} from '@/lib/seuil-rentabilite'
 import { redirect } from 'next/navigation'
 import DashboardClient from './DashboardClient'
 
@@ -39,15 +48,14 @@ export default async function Dashboard({ searchParams }) {
   const periodePrec = periodePrecedenteAEgaleDuree(periodeActuelle)
   const { since, until, label, filtreId } = periodeActuelle
 
-  // Charges fixes : toujours sur le mois en cours, indépendant du filtre.
-  // Utilisé pour le calcul du seuil de rentabilité (sera refondu au commit 3).
   const moisCourant = getCeMois({ timezone })
 
-  // Bornes 6 mois glissants pour sparkline food cost
-  const untilDate = new Date(until)
-  const debut6Mois = new Date(untilDate.getFullYear(), untilDate.getMonth() - 5, 1)
-    .toISOString()
-    .slice(0, 10)
+  // Bornes 6 mois jusqu'au mois courant (today), indépendant du filtre.
+  // Le contexte historique de la sparkline doit être stable, pas suivre la période sélectionnée.
+  const now = new Date()
+  const todayISO = now.toISOString().slice(0, 10)
+  const debut6MoisDate = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+  const debut6Mois = debut6MoisDate.toISOString().slice(0, 10)
 
   const [
     kpisActuel,
@@ -59,7 +67,8 @@ export default async function Dashboard({ searchParams }) {
     { data: transactionsPeriode },
     { data: transactionsPeriodePrec },
     { data: transactionsConso6Mois },
-    { data: histCa6Mois }
+    { data: histCa6Mois },
+    { data: transactionsChargesFixes6Mois }
   ] = await Promise.all([
     getAnalysesKPIs({ parametre_id, since, until, parametres: params }),
     getAnalysesKPIs({ parametre_id, since: periodePrec.since, until: periodePrec.until, parametres: params }),
@@ -89,7 +98,6 @@ export default async function Dashboard({ searchParams }) {
       .gte('date', since)
       .lte('date', until)
       .order('date', { ascending: true }),
-    // Transactions Consommations sur la période actuelle (décomposition + top fournisseurs)
     supabase
       .from('transactions')
       .select('fournisseur_nom, sous_categorie, montant_ht, categorie_pl')
@@ -97,7 +105,6 @@ export default async function Dashboard({ searchParams }) {
       .eq('categorie_pl', 'consommations')
       .gte('date', since)
       .lte('date', until),
-    // Transactions Consommations sur la période précédente (variations top fournisseurs)
     supabase
       .from('transactions')
       .select('fournisseur_nom, montant_ht, categorie_pl')
@@ -105,47 +112,56 @@ export default async function Dashboard({ searchParams }) {
       .eq('categorie_pl', 'consommations')
       .gte('date', periodePrec.since)
       .lte('date', periodePrec.until),
-    // Transactions Consommations sur 6 mois glissants (sparkline numérateur)
+    // Consommations 6 mois jusqu'à today (sparkline food cost + marge brute 30j seuil)
     supabase
       .from('transactions')
       .select('date, montant_ht')
       .eq('parametre_id', parametre_id)
       .eq('categorie_pl', 'consommations')
       .gte('date', debut6Mois)
-      .lte('date', until),
-    // Historique CA HT sur 6 mois glissants (sparkline dénominateur)
+      .lte('date', todayISO),
+    // CA HT 6 mois jusqu'à today (dénominateur sparkline + marge 30j seuil)
     supabase
       .from('historique_ca')
       .select('date, ca_ht')
       .eq('parametre_id', parametre_id)
       .gte('date', debut6Mois)
-      .lte('date', until)
+      .lte('date', todayISO),
+    // Charges fixes 6 mois jusqu'à today (sparkline couverture seuil + 30j seuil + décomposition)
+    supabase
+      .from('transactions')
+      .select('date, montant_ht, categorie_pl')
+      .eq('parametre_id', parametre_id)
+      .in('categorie_pl', CATEGORIES_CHARGES_FIXES)
+      .gte('date', debut6Mois)
+      .lte('date', todayISO)
   ])
 
-  const categoriesFixe = ['loyers_charges', 'honoraires', 'redevance_marque', 'energie', 'autres_frais_influencables', 'prestations_operationnelles']
-  const chargesFixesMensuelles = (transactionsMois || [])
-    .filter(t => categoriesFixe.includes(t.categorie_pl))
-    .reduce((s, t) => s + t.montant_ht, 0)
-
+  // ───────────────────────────────────────────────────────────────────
+  // Variations CA / Cmd / Panier
+  // ───────────────────────────────────────────────────────────────────
   const variations = {
     ca: computeVariation(kpisActuel.ca.brut, kpisPrec.ca.brut),
     cmd: computeVariation(kpisActuel.frequentation.nbCommandes, kpisPrec.frequentation.nbCommandes),
     panier: computeVariation(kpisActuel.panierMoyen, kpisPrec.panierMoyen),
     label: getLabelVariation(periodeActuelle)
   }
-
-  // Variation food cost en POINTS (pas %), signe : positif = food cost monte (mauvais).
   const variationFoodCostPts = (kpisActuel.foodCostP || 0) - (kpisPrec.foodCostP || 0)
 
   const canauxRegroupes = regrouperCanaux(kpisActuel.ca)
 
+  // ───────────────────────────────────────────────────────────────────
+  // Reste à faire (ce-mois et filtres dans le mois courant uniquement)
+  // ───────────────────────────────────────────────────────────────────
   const objectifCA = params?.objectif_ca || 0
   const caMoisCourant = (histMois || []).reduce((s, r) => s + (r.ca_brut || 0), 0)
   const resteAFaire = (objectifCA > 0 && FILTRES_DANS_MOIS_COURANT.includes(filtreId))
     ? Math.max(0, objectifCA - caMoisCourant)
     : null
 
-  // Décomposition food cost par sous-catégorie + top fournisseurs Consommations
+  // ───────────────────────────────────────────────────────────────────
+  // Food cost — décomposition + top fournisseurs + sparkline 6 mois
+  // ───────────────────────────────────────────────────────────────────
   const decompositionMatieres = decomposerParSousCategorie(transactionsPeriode || [])
   const topFournisseurs = topFournisseursConsommations(
     transactionsPeriode || [],
@@ -155,8 +171,48 @@ export default async function Dashboard({ searchParams }) {
   const foodCost6Mois = calculerFoodCost6Mois(
     transactionsConso6Mois || [],
     histCa6Mois || [],
-    until
+    todayISO
   )
+
+  // ───────────────────────────────────────────────────────────────────
+  // Seuil de rentabilité — 30j roulants (charges fixes + marge brute)
+  // + projection ce-mois + statut + couverture 6 mois + décomposition
+  // ───────────────────────────────────────────────────────────────────
+  const transactionsChargesFixes30j = filtrer30j(transactionsChargesFixes6Mois || [], now)
+  const transactionsConso30j = filtrer30j(transactionsConso6Mois || [], now)
+  const histCa30j = filtrer30j(histCa6Mois || [], now)
+
+  const chargesFixes30j = transactionsChargesFixes30j.reduce((s, t) => s + (t.montant_ht || 0), 0)
+  const conso30j = transactionsConso30j.reduce((s, t) => s + (t.montant_ht || 0), 0)
+  const caHT30j = histCa30j.reduce((s, r) => s + (r.ca_ht || 0), 0)
+
+  const seuilResult = calculerSeuil({ chargesFixes30j, conso30j, caHT30j, periode: periodeActuelle })
+  const projectionFinMois = calculerProjection({
+    caEffectif: kpisActuel.ca.brut,
+    periode: periodeActuelle,
+    refDate: now
+  })
+  const statutSeuil = computeStatutSeuil({
+    filtreId,
+    caEffectif: kpisActuel.ca.brut,
+    seuilPeriode: seuilResult.seuilPeriode,
+    projectionFinMois,
+    seuilMensuel: seuilResult.seuilMensuel,
+    etat: seuilResult.etat
+  })
+  const couverture6Mois = calculerCouverture6Mois({
+    transactionsChargesFixes6Mois: transactionsChargesFixes6Mois || [],
+    transactionsConso6Mois: transactionsConso6Mois || [],
+    histCa6Mois: histCa6Mois || [],
+    refDate: now
+  })
+  const decompositionChargesFixes = decomposerChargesFixes30j(transactionsChargesFixes30j)
+
+  // Charges fixes mensuelles agrégées (mois calendaire) — gardées pour rétro-compat
+  // Utilisées par la projection de ce-mois et certains affichages drill.
+  const chargesFixesMensuelles = (transactionsMois || [])
+    .filter(t => CATEGORIES_CHARGES_FIXES.includes(t.categorie_pl))
+    .reduce((s, t) => s + t.montant_ht, 0)
 
   const data = {
     label,
@@ -181,6 +237,17 @@ export default async function Dashboard({ searchParams }) {
     topFournisseurs,
     foodCost6Mois,
     chargesFixesMensuelles,
+    seuil: {
+      etat: seuilResult.etat,
+      chargesFixes30j: seuilResult.chargesFixes30j || 0,
+      margeBrute30j: seuilResult.margeBrute30j,
+      seuilMensuel: seuilResult.seuilMensuel,
+      seuilPeriode: seuilResult.seuilPeriode,
+      projectionFinMois,
+      statut: statutSeuil,
+      couverture6Mois,
+      decomposition: decompositionChargesFixes
+    },
     variations,
     resteAFaire,
     lastSyncDate: derniereDate?.date || null,
