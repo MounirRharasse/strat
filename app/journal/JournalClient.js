@@ -3,55 +3,173 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import PeriodFilter from '@/components/PeriodFilter'
+import CalendrierHeatMap from '@/components/CalendrierHeatMap'
 
-export default function JournalClient({ transactions, entrees, historique, kpis, today, yesterday, periode, type }) {
+const CATEGORIE_LABELS = {
+  consommations: 'Consommations',
+  frais_personnel: 'Frais personnel',
+  autres_charges_personnel: 'Autres charges personnel',
+  frais_deplacement: 'Frais deplacement',
+  entretiens_reparations: 'Entretiens et Reparations',
+  energie: 'Energie',
+  autres_frais_influencables: 'Autres frais',
+  loyers_charges: 'Loyers et Charges',
+  honoraires: 'Honoraires',
+  redevance_marque: 'Redevance de Marque',
+  prestations_operationnelles: 'Prestations',
+  frais_divers: 'Frais Divers',
+  autres_charges: 'Autres charges',
+  impots_benefices: 'Impots sur les benefices'
+}
+
+const CATEGORIE_COLORS = {
+  consommations: 'text-orange-400',
+  frais_personnel: 'text-blue-400',
+  autres_charges_personnel: 'text-blue-300',
+  energie: 'text-green-400',
+  loyers_charges: 'text-purple-400',
+  prestations_operationnelles: 'text-red-400',
+  honoraires: 'text-purple-300',
+  redevance_marque: 'text-pink-400'
+}
+
+const getIcon = (cat) => {
+  const icons = {
+    consommations: '🛒', energie: '⚡', loyers_charges: '🏪',
+    prestations_operationnelles: '📱', honoraires: '📋',
+    redevance_marque: '™️', entretiens_reparations: '🔧',
+    frais_deplacement: '🚗'
+  }
+  if (cat?.includes('personnel')) return '👥'
+  return icons[cat] || '💸'
+}
+
+const SOURCE_LABELS = {
+  uber_eats: 'Uber Eats', deliveroo: 'Deliveroo', just_eat: 'Just Eat',
+  autre_livraison: 'Autre livraison', autre_entree: 'Autre entree'
+}
+const SOURCE_ICONS = {
+  uber_eats: '🛵', deliveroo: '🦘', just_eat: '🍔',
+  autre_livraison: '📦', autre_entree: '💰'
+}
+
+function BandauStatut({ nbCritiques, nbAttention }) {
+  if (nbCritiques > 0) {
+    return (
+      <div className="bg-red-950/50 border border-red-900 rounded-2xl px-4 py-3 mb-3">
+        <p className="text-sm font-semibold text-red-400">
+          🔴 {nbCritiques} manque{nbCritiques > 1 ? 's' : ''} critique{nbCritiques > 1 ? 's' : ''}
+        </p>
+        {nbAttention > 0 && (
+          <p className="text-xs text-gray-400 mt-1">
+            + {nbAttention} point{nbAttention > 1 ? 's' : ''} d'attention
+          </p>
+        )}
+      </div>
+    )
+  }
+  if (nbAttention > 0) {
+    return (
+      <div className="bg-yellow-950/50 border border-yellow-900 rounded-2xl px-4 py-3 mb-3">
+        <p className="text-sm font-semibold text-yellow-400">
+          ⚠️ {nbAttention} point{nbAttention > 1 ? 's' : ''} d'attention
+        </p>
+      </div>
+    )
+  }
+  return (
+    <div className="bg-green-950/50 border border-green-900 rounded-2xl px-4 py-3 mb-3">
+      <p className="text-sm font-semibold text-green-400">✓ Tout est saisi</p>
+    </div>
+  )
+}
+
+function ctaHrefDe(alerte) {
+  // Commit 2 : href de base (le FAB ouvre dans le bon mode).
+  // Commit 3 : params étendus (date, source, categorie, sous_categorie).
+  if (alerte?.cta?.mode === 'depense') return '/journal?openFab=depense'
+  if (alerte?.cta?.mode === 'entree') return '/journal?openFab=entree'
+  return null
+}
+
+function AlerteCard({ alerte, onIgnore }) {
+  const cls = alerte.criticite === 'rouge'
+    ? 'bg-red-950/40 border-red-900'
+    : 'bg-yellow-950/40 border-yellow-900'
+  const couleurTitre = alerte.criticite === 'rouge' ? 'text-red-300' : 'text-yellow-300'
+  const href = ctaHrefDe(alerte)
+
+  return (
+    <div className={'border rounded-xl px-4 py-3 ' + cls}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className={'text-sm font-semibold ' + couleurTitre}>{alerte.titre}</p>
+          {alerte.sousTexte && (
+            <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{alerte.sousTexte}</p>
+          )}
+        </div>
+        <button
+          onClick={() => onIgnore(alerte)}
+          aria-label="Ignorer cette alerte"
+          className="text-gray-500 hover:text-gray-300 text-lg leading-none flex-shrink-0"
+        >
+          ✕
+        </button>
+      </div>
+      {href && (
+        <Link
+          href={href}
+          className="inline-block mt-2 text-xs bg-white text-gray-950 px-3 py-1.5 rounded-lg font-semibold"
+        >
+          Saisir
+        </Link>
+      )}
+    </div>
+  )
+}
+
+export default function JournalClient({
+  transactions, entrees, historique, kpis, today, yesterday,
+  periode, type, audit, calendrier30j, joursFermesConfigures
+}) {
   const [localEntrees, setLocalEntrees] = useState(entrees)
   const [deletingId, setDeletingId] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [editMontant, setEditMontant] = useState('')
   const [editNote, setEditNote] = useState('')
   const [editNbCommandes, setEditNbCommandes] = useState('')
+  const [alertesIgnoresLocales, setAlertesIgnoresLocales] = useState(new Set())
 
   const fmt = (n) => new Intl.NumberFormat('fr-FR', {
     style: 'currency', currency: 'EUR', maximumFractionDigits: 2
   }).format(n || 0)
 
-  const CATEGORIE_LABELS = {
-    consommations: 'Consommations',
-    frais_personnel: 'Frais personnel',
-    autres_charges_personnel: 'Autres charges personnel',
-    frais_deplacement: 'Frais deplacement',
-    entretiens_reparations: 'Entretiens et Reparations',
-    energie: 'Energie',
-    autres_frais_influencables: 'Autres frais',
-    loyers_charges: 'Loyers et Charges',
-    honoraires: 'Honoraires',
-    redevance_marque: 'Redevance de Marque',
-    prestations_operationnelles: 'Prestations',
-    frais_divers: 'Frais Divers',
-    autres_charges: 'Autres charges',
-    impots_benefices: 'Impots sur les benefices'
-  }
+  // Filtrer alertes selon ignores locaux (en plus du filtre serveur via audits_ignores)
+  const alertesAffichees = (audit?.alertes || []).filter(
+    a => !alertesIgnoresLocales.has(a.type + '|' + a.cle)
+  )
+  const nbCritiques = alertesAffichees.filter(a => a.criticite === 'rouge').length
+  const nbAttention = alertesAffichees.filter(a => a.criticite === 'orange').length
 
-  const CATEGORIE_COLORS = {
-    consommations: 'text-orange-400',
-    frais_personnel: 'text-blue-400',
-    autres_charges_personnel: 'text-blue-300',
-    energie: 'text-green-400',
-    loyers_charges: 'text-purple-400',
-    prestations_operationnelles: 'text-red-400',
-    honoraires: 'text-purple-300',
-    redevance_marque: 'text-pink-400',
+  async function ignorerAlerte(alerte) {
+    const cle = alerte.type + '|' + alerte.cle
+    // Optimistic : retire de l'UI immédiatement
+    setAlertesIgnoresLocales(prev => new Set([...prev, cle]))
+    try {
+      await fetch('/api/audits-ignores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: alerte.type, cle: alerte.cle })
+      })
+    } catch {
+      // Restauration en cas d'échec
+      setAlertesIgnoresLocales(prev => {
+        const next = new Set(prev)
+        next.delete(cle)
+        return next
+      })
+    }
   }
-
-  const getIcon = (cat) => {
-    const icons = { consommations: '🛒', energie: '⚡', loyers_charges: '🏪', prestations_operationnelles: '📱', honoraires: '📋', redevance_marque: '™️', entretiens_reparations: '🔧', frais_deplacement: '🚗' }
-    if (cat?.includes('personnel')) return '👥'
-    return icons[cat] || '💸'
-  }
-
-  const SOURCE_LABELS = { uber_eats: 'Uber Eats', deliveroo: 'Deliveroo', just_eat: 'Just Eat', autre_livraison: 'Autre livraison', autre_entree: 'Autre entree' }
-  const SOURCE_ICONS = { uber_eats: '🛵', deliveroo: '🦘', just_eat: '🍔', autre_livraison: '📦', autre_entree: '💰' }
 
   async function supprimerEntree(id) {
     if (!confirm('Supprimer cette entree ?')) return
@@ -88,7 +206,9 @@ export default function JournalClient({ transactions, entrees, historique, kpis,
 
   const totalDepenses = transactions.reduce((s, t) => s + t.montant_ttc, 0)
   const depensesAujourdhui = transactions.filter(t => t.date === today).reduce((s, t) => s + t.montant_ttc, 0)
-  const entreesUberAujourdhui = localEntrees.filter(e => e.date === today || e.date === yesterday).reduce((s, e) => s + e.montant_ttc, 0)
+  const entreesUberAujourdhui = localEntrees
+    .filter(e => e.date === today || e.date === yesterday)
+    .reduce((s, e) => s + e.montant_ttc, 0)
 
   const byDate = {}
   for (const t of transactions) {
@@ -110,13 +230,13 @@ export default function JournalClient({ transactions, entrees, historique, kpis,
               className="flex-1 bg-transparent text-white font-mono focus:outline-none" autoFocus />
           </div>
           {e.source === 'uber_eats' && (
-  <div className="flex items-center gap-2 bg-gray-800 rounded-xl px-3 py-2 mb-2">
-    <span className="text-gray-400 text-sm">Nb commandes</span>
-    <input type="number" defaultValue={editNbCommandes}
-      onBlur={ev => setEditNbCommandes(ev.target.value)}
-      className="flex-1 bg-transparent text-white font-mono text-right focus:outline-none" placeholder="0" />
-  </div>
-)}
+            <div className="flex items-center gap-2 bg-gray-800 rounded-xl px-3 py-2 mb-2">
+              <span className="text-gray-400 text-sm">Nb commandes</span>
+              <input type="number" defaultValue={editNbCommandes}
+                onBlur={ev => setEditNbCommandes(ev.target.value)}
+                className="flex-1 bg-transparent text-white font-mono text-right focus:outline-none" placeholder="0" />
+            </div>
+          )}
           <input type="text" value={editNote} onChange={ev => setEditNote(ev.target.value)}
             placeholder="Note (optionnel)"
             className="w-full bg-gray-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none mb-2" />
@@ -152,6 +272,7 @@ export default function JournalClient({ transactions, entrees, historique, kpis,
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4 max-w-md mx-auto pb-24">
 
+      {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <Link href="/dashboard" className="w-9 h-9 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -167,14 +288,48 @@ export default function JournalClient({ transactions, entrees, historique, kpis,
         </div>
       </div>
 
-      <div className="mb-2">
+      {/* PeriodFilter */}
+      <div className="mb-3">
         <PeriodFilter profil="journal" basePath="/journal" filtreActif={periode} />
       </div>
 
+      {/* Bandeau statut global */}
+      <BandauStatut nbCritiques={nbCritiques} nbAttention={nbAttention} />
+
+      {/* Empty state si jours_fermes non configurés */}
+      {!joursFermesConfigures && (
+        <div className="bg-blue-950/30 border border-blue-900/30 border-l-4 border-l-blue-500 rounded-xl px-4 py-3 mb-3">
+          <p className="text-sm text-blue-400 font-medium mb-1">Configure tes jours d'ouverture</p>
+          <p className="text-xs text-gray-300 leading-relaxed mb-2">
+            Pour activer la détection des trous de jours, indique tes jours d'ouverture habituels dans Paramètres.
+          </p>
+          <Link href="/parametres" className="inline-block text-xs text-blue-400 hover:text-blue-300">
+            Aller aux Paramètres ›
+          </Link>
+        </div>
+      )}
+
+      {/* Section À vérifier */}
+      {alertesAffichees.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">À vérifier</p>
+          <div className="space-y-2">
+            {alertesAffichees.map(a => (
+              <AlerteCard
+                key={a.type + '|' + a.cle}
+                alerte={a}
+                onIgnore={ignorerAlerte}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tabs (filtre type pour la section Saisies) */}
       <div className="flex gap-2 mb-4">
-        <Link href={"/journal?periode=" + periode + "&type=all"} className={"flex-1 text-center text-xs py-2 rounded-xl border " + (type === 'all' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Tout</Link>
-        <Link href={"/journal?periode=" + periode + "&type=entrees"} className={"flex-1 text-center text-xs py-2 rounded-xl border " + (type === 'entrees' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Entrées</Link>
-        <Link href={"/journal?periode=" + periode + "&type=depenses"} className={"flex-1 text-center text-xs py-2 rounded-xl border " + (type === 'depenses' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Dépenses</Link>
+        <Link href={'/journal?periode=' + periode + '&type=all'} className={'flex-1 text-center text-xs py-2 rounded-xl border ' + (type === 'all' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Tout</Link>
+        <Link href={'/journal?periode=' + periode + '&type=entrees'} className={'flex-1 text-center text-xs py-2 rounded-xl border ' + (type === 'entrees' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Entrées</Link>
+        <Link href={'/journal?periode=' + periode + '&type=depenses'} className={'flex-1 text-center text-xs py-2 rounded-xl border ' + (type === 'depenses' ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>Dépenses</Link>
       </div>
 
       {/* AUJOURD'HUI */}
@@ -194,10 +349,10 @@ export default function JournalClient({ transactions, entrees, historique, kpis,
                 </div>
                 {kpis.canaux.online > 0 && (
                   <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-800">
-                    <div className="w-9 h-9 rounded-xl bg-orange-950 border border-orange-900 flex items-center justify-center">🛵</div>
+                    <div className="w-9 h-9 rounded-xl bg-orange-950 border border-orange-900 flex items-center justify-center">📱</div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium">Foxorder</p>
-                      <p className="text-xs text-orange-400">En ligne</p>
+                      <p className="text-sm font-medium">Borne</p>
+                      <p className="text-xs text-orange-400">Commandes en borne</p>
                     </div>
                     <p className="text-sm font-mono font-semibold text-orange-400">+{fmt(kpis.canaux.online)}</p>
                   </div>
@@ -214,7 +369,7 @@ export default function JournalClient({ transactions, entrees, historique, kpis,
                 <div className="w-9 h-9 rounded-xl bg-gray-800 flex items-center justify-center">{getIcon(t.categorie_pl)}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{t.fournisseur_nom}</p>
-                  <p className={"text-xs mt-0.5 " + (CATEGORIE_COLORS[t.categorie_pl] || 'text-gray-400')}>{CATEGORIE_LABELS[t.categorie_pl] || t.categorie_pl}</p>
+                  <p className={'text-xs mt-0.5 ' + (CATEGORIE_COLORS[t.categorie_pl] || 'text-gray-400')}>{CATEGORIE_LABELS[t.categorie_pl] || t.categorie_pl}</p>
                   {t.note && <p className="text-xs text-gray-500">{t.note}</p>}
                 </div>
                 <div className="text-right">
@@ -227,7 +382,7 @@ export default function JournalClient({ transactions, entrees, historique, kpis,
             {type === 'all' && kpis.hasData && (
               <div className="flex justify-between items-center px-4 py-3 bg-gray-800/50 border-t border-gray-700">
                 <span className="text-xs text-gray-400 font-medium">Resultat du jour</span>
-                <span className={"text-sm font-mono font-bold " + (kpis.ca.brut + entreesUberAujourdhui - depensesAujourdhui > 0 ? 'text-green-400' : 'text-red-400')}>
+                <span className={'text-sm font-mono font-bold ' + (kpis.ca.brut + entreesUberAujourdhui - depensesAujourdhui > 0 ? 'text-green-400' : 'text-red-400')}>
                   {fmt(kpis.ca.brut + entreesUberAujourdhui - depensesAujourdhui)}
                 </span>
               </div>
@@ -283,7 +438,7 @@ export default function JournalClient({ transactions, entrees, historique, kpis,
                       <div className="w-9 h-9 rounded-xl bg-gray-800 flex items-center justify-center">{getIcon(t.categorie_pl)}</div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{t.fournisseur_nom}</p>
-                        <p className={"text-xs mt-0.5 " + (CATEGORIE_COLORS[t.categorie_pl] || 'text-gray-400')}>{CATEGORIE_LABELS[t.categorie_pl] || t.categorie_pl}</p>
+                        <p className={'text-xs mt-0.5 ' + (CATEGORIE_COLORS[t.categorie_pl] || 'text-gray-400')}>{CATEGORIE_LABELS[t.categorie_pl] || t.categorie_pl}</p>
                         {t.note && <p className="text-xs text-gray-500 truncate">{t.note}</p>}
                       </div>
                       <div className="text-right">
@@ -298,6 +453,14 @@ export default function JournalClient({ transactions, entrees, historique, kpis,
           })}
         </div>
       )}
+
+      {/* Calendrier 30 jours */}
+      <div className="mt-6">
+        <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">30 derniers jours</p>
+        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4">
+          <CalendrierHeatMap data={calendrier30j} />
+        </div>
+      </div>
     </div>
   )
 }

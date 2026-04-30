@@ -137,6 +137,40 @@ export default function ParamClient({ params: initialParams, inventaires: initia
         />
       </div>
 
+      {/* JOURS D'OUVERTURE */}
+      <SectionHeader label="Mes jours d'ouverture" hint="Sélectionne tes jours d'ouverture. Les autres seront considérés comme fermés (utilisé par /journal pour détecter les trous de saisie)." />
+      <div className="bg-gray-900 rounded-2xl border border-gray-800 p-3">
+        <div className="grid grid-cols-7 gap-1.5">
+          {[
+            { num: 1, label: 'Lun' },
+            { num: 2, label: 'Mar' },
+            { num: 3, label: 'Mer' },
+            { num: 4, label: 'Jeu' },
+            { num: 5, label: 'Ven' },
+            { num: 6, label: 'Sam' },
+            { num: 0, label: 'Dim' }
+          ].map(j => {
+            const fermesActuels = params.jours_fermes_semaine || []
+            const ouvert = !fermesActuels.includes(j.num)
+            return (
+              <button
+                key={j.num}
+                onClick={() => {
+                  const nouveaux = ouvert
+                    ? [...fermesActuels, j.num]
+                    : fermesActuels.filter(n => n !== j.num)
+                  save({ jours_fermes_semaine: nouveaux })
+                }}
+                className={'py-2 rounded-xl text-xs font-medium transition ' + (ouvert ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-500')}
+                aria-pressed={ouvert}
+              >
+                {j.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {/* OBJECTIFS */}
       <SectionHeader label="Objectifs" />
       <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
