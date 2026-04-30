@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import PeriodFilter from '@/components/PeriodFilter'
+import Sparkline from '@/components/Sparkline'
 import DrillDown from './DrillDown'
 
 const FMT = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
@@ -61,6 +62,7 @@ export default function DashboardClient({ data, params, periode }) {
   const nbCommandes = data?.frequentation?.nbCommandes || 0
   const panierMoyen = data?.panierMoyen || 0
   const foodCostP = data?.foodCostP || 0
+  const variationFoodCostPts = data?.variationFoodCostPts
   const variations = data?.variations || { ca: {}, cmd: {}, panier: {}, label: 'vs période précédente' }
   const resteAFaire = data?.resteAFaire
   const lastSyncDate = data?.lastSyncDate
@@ -121,35 +123,33 @@ export default function DashboardClient({ data, params, periode }) {
         )}
       </div>
 
-      {/* FOOD COST — sera allégé au commit 3 */}
+      {/* FOOD COST — refondu pour persona 10h café (commit 2) */}
       <div onClick={() => setDrill('foodcost')} className="bg-gray-900 rounded-2xl p-4 mb-3 border border-gray-800 cursor-pointer hover:border-gray-600 transition">
-        <div className="flex justify-between items-start">
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">
-              Food cost · {data.foodCostMode === 'exact'
-                ? `exact ${data.foodCostPeriode.since} → ${data.foodCostPeriode.until}`
-                : `${data.label} (estimé)`}
-            </p>
-            <p className={"text-3xl font-bold font-mono " + (foodCostP > alerteFoodCostMax ? 'text-red-400' : foodCostP > 0 ? 'text-green-400' : 'text-gray-500')}>
-              {foodCostP > 0 ? foodCostP.toFixed(1) + '%' : 'N/A'}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">Objectif {objectifFoodCost}% · Saisir via +</p>
-          </div>
-          <div className="text-right">
-            {foodCostP > 0 && (
-              <span className={"text-xs px-2 py-1 rounded-full border " + (foodCostP > alerteFoodCostMax ? 'bg-red-950 text-red-400 border-red-900' : 'bg-green-950 text-green-400 border-green-900')}>
-                {foodCostP > objectifFoodCost ? '+' : ''}{(foodCostP - objectifFoodCost).toFixed(1)}pts
-              </span>
-            )}
-            {data.foodCostMode === 'estime' && (
-              <p className="text-xs text-yellow-600 mt-2 bg-yellow-950 border border-yellow-900 px-2 py-0.5 rounded-full">estimé</p>
-            )}
-            {data.foodCostMode === 'exact' && (
-              <p className="text-xs text-green-500 mt-2 bg-green-950 border border-green-900 px-2 py-0.5 rounded-full">exact</p>
-            )}
-            <p className="text-gray-600 text-xs mt-1">Tap ›</p>
-          </div>
+        <div className="flex justify-between items-center mb-2">
+          <p className="text-xs text-gray-400 uppercase tracking-widest">
+            Food cost · {data.label}
+          </p>
+          <Sparkline
+            data={(data?.foodCost6Mois || []).map(m => m.foodCost)}
+            couleur={foodCostP > alerteFoodCostMax ? '#ef4444' : '#22c55e'}
+            width={60}
+            height={16}
+          />
         </div>
+        <div className="flex items-baseline gap-3">
+          <p className={"text-3xl font-bold font-mono " + (foodCostP > alerteFoodCostMax ? 'text-red-400' : foodCostP > 0 ? 'text-green-400' : 'text-gray-500')}>
+            {foodCostP > 0 ? foodCostP.toFixed(1) + '%' : 'N/A'}
+          </p>
+          {variationFoodCostPts !== null && variationFoodCostPts !== undefined && Math.abs(variationFoodCostPts) >= 0.05 && (
+            <span className={"text-xs font-mono " + (variationFoodCostPts > 0 ? 'text-red-400' : 'text-green-400')}>
+              {variationFoodCostPts > 0 ? '+' : ''}{variationFoodCostPts.toFixed(1)}pts
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-gray-500 mt-1">
+          vs mois dernier · objectif {objectifFoodCost}% · {data.foodCostMode === 'exact' ? 'exact' : 'provisoire'}
+        </p>
+        <p className="text-xs text-gray-600 mt-2">Tap pour voir d'où vient ce chiffre ›</p>
       </div>
 
       {/* SEUIL — sera refondu au commit 2 */}

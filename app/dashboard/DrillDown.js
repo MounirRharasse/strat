@@ -1,8 +1,21 @@
 'use client'
 
+import { useState } from 'react'
+import Link from 'next/link'
+
 const fmt = (n) => new Intl.NumberFormat('fr-FR', {
   style: 'currency', currency: 'EUR', maximumFractionDigits: 0
 }).format(n || 0)
+
+// Couleurs pour les barres de décomposition matières premières (5 sous-cats max)
+const COULEURS_DECOMPOSITION = [
+  'bg-red-500',
+  'bg-orange-500',
+  'bg-blue-500',
+  'bg-purple-500',
+  'bg-gray-500',
+  'bg-pink-500'
+]
 
 // Courbe SVG remplie (Bézier cubique lissée). Utilisée par les sections CA, Cmd, Panier.
 function Courbe({ vals, color = '#3b82f6' }) {
@@ -47,6 +60,49 @@ function Courbe({ vals, color = '#3b82f6' }) {
   )
 }
 
+// Courbe food cost avec ligne objectif en pointillé. Couleur courbe selon
+// la valeur actuelle vs objectif (rouge si > obj, vert sinon).
+function FoodCostCourbe({ data, objectif }) {
+  if (!data || data.length < 2) {
+    return (
+      <div className="h-20 flex items-center justify-center">
+        <p className="text-xs text-gray-500">Pas assez de donnees</p>
+      </div>
+    )
+  }
+  const W = 300
+  const H = 80
+  const pad = 12
+  const vals = data.map(d => d.foodCost)
+  const max = Math.max(...vals, objectif, 1)
+  const min = Math.min(...vals, objectif, 0)
+  const range = max - min || 1
+
+  const pts = vals.map((v, i) => ({
+    x: pad + (i / (vals.length - 1)) * (W - pad * 2),
+    y: H - pad - ((v - min) / range) * (H - pad * 2)
+  }))
+
+  let path = `M ${pts[0].x} ${pts[0].y}`
+  for (let i = 1; i < pts.length; i++) {
+    const cpx = (pts[i - 1].x + pts[i].x) / 2
+    path += ` C ${cpx} ${pts[i - 1].y} ${cpx} ${pts[i].y} ${pts[i].x} ${pts[i].y}`
+  }
+
+  const yObjectif = H - pad - ((objectif - min) / range) * (H - pad * 2)
+  const valActuel = vals[vals.length - 1]
+  const couleur = valActuel > objectif ? '#ef4444' : '#22c55e'
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 80 }}>
+      <line x1={pad} y1={yObjectif} x2={W - pad} y2={yObjectif} stroke="#22c55e" strokeWidth="1" strokeDasharray="4 4" opacity="0.6" />
+      <text x={W - pad - 2} y={yObjectif - 4} fontSize="9" fill="#22c55e" textAnchor="end" opacity="0.8">obj. {objectif}%</text>
+      <path d={path} fill="none" stroke={couleur} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r="4" fill={couleur} />
+    </svg>
+  )
+}
+
 function StatGrid({ stats }) {
   return (
     <div className="grid grid-cols-2 gap-2 mt-3">
@@ -77,7 +133,21 @@ function VariationBadge({ variation }) {
   return null
 }
 
+// Variant : variation food cost en POINTS (pas %). Couleur inversée :
+// food cost qui MONTE = rouge (mauvais), food cost qui BAISSE = vert (bien).
+function VariationFoodCostBadge({ pts }) {
+  if (pts === null || pts === undefined || Math.abs(pts) < 0.05) return null
+  const cls = pts > 0 ? 'text-red-400' : 'text-green-400'
+  return (
+    <span className={"text-sm font-mono " + cls}>
+      {pts > 0 ? '+' : ''}{pts.toFixed(1)}pts
+    </span>
+  )
+}
+
 export default function DrillDown({ type, data, params, onClose }) {
+  const [foodcostTooltipOpen, setFoodcostTooltipOpen] = useState(false)
+
   const objectifCA = params?.objectif_ca || 45000
   const objectifJour = Math.round(objectifCA / 30)
   const alerteTicketMin = params?.alerte_ticket_min || 14.5
@@ -101,6 +171,17 @@ export default function DrillDown({ type, data, params, onClose }) {
   const periode = data?.periodeActuelle || {}
   const nbJours = data?.nbJours || 1
 
+  // Spécifique food cost
+  const variationFoodCostPts = data?.variationFoodCostPts
+  const decompositionMatieres = data?.decompositionMatieres || []
+  const topFournisseurs = data?.topFournisseurs || []
+  const foodCost6Mois = data?.foodCost6Mois || []
+  const totalDecomposition = decompositionMatieres.reduce((s, d) => s + d.total, 0)
+  const moisLeMoinsCher = foodCost6Mois.length > 0
+    ? foodCost6Mois.reduce((min, m) => (m.foodCost > 0 && (min === null || m.foodCost < min.foodCost)) ? m : min, null)
+    : null
+  const moisActuel = foodCost6Mois.length > 0 ? foodCost6Mois[foodCost6Mois.length - 1] : null
+
   const tauxMargeVariable = caHT > 0 ? ((caHT - caHT * (foodCostP / 100)) / caHT * 100) : 66
   const seuilJournalier = chargesFixesMensuelles > 0 ? Math.round(chargesFixesMensuelles / 30 / (tauxMargeVariable / 100)) : 0
   const seuilMensuel = chargesFixesMensuelles > 0 ? Math.round(chargesFixesMensuelles / (tauxMargeVariable / 100)) : 0
@@ -111,12 +192,10 @@ export default function DrillDown({ type, data, params, onClose }) {
   const tauxAtteinte = objectifPeriode > 0 ? Math.round(caBrut / objectifPeriode * 100) : 0
 
   // ───────────────────────────────────────────────────────────────────
-  // Drill UNIFIÉ — type='ca' : 6 sections empilées, période alignée
-  // sur le PeriodFilter du dashboard (plus de TF local).
+  // Drill UNIFIÉ — type='ca' : 6 sections empilées (commit 1).
   // ───────────────────────────────────────────────────────────────────
   const renderUnifie = () => (
     <>
-      {/* Section CA */}
       <div className="mb-5">
         <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Chiffre d'affaires</p>
         <div className="flex items-baseline gap-3 mb-1">
@@ -133,7 +212,6 @@ export default function DrillDown({ type, data, params, onClose }) {
         ]} />
       </div>
 
-      {/* Section Commandes */}
       <div className="mb-5 pt-4 border-t border-gray-800">
         <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Commandes</p>
         <div className="flex items-baseline gap-3 mb-1">
@@ -148,7 +226,6 @@ export default function DrillDown({ type, data, params, onClose }) {
         ]} />
       </div>
 
-      {/* Section Panier moyen */}
       <div className="mb-5 pt-4 border-t border-gray-800">
         <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Panier moyen</p>
         <div className="flex items-baseline gap-3 mb-1">
@@ -163,7 +240,6 @@ export default function DrillDown({ type, data, params, onClose }) {
         ]} />
       </div>
 
-      {/* Section Restaurant / Livraisons */}
       <div className="mb-5 pt-4 border-t border-gray-800">
         <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">Restaurant / Livraisons</p>
         <div className="space-y-2 mb-3">
@@ -194,7 +270,6 @@ export default function DrillDown({ type, data, params, onClose }) {
         </div>
       </div>
 
-      {/* Section Répartition paiements */}
       <div className="mb-5 pt-4 border-t border-gray-800">
         <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">Répartition paiements</p>
         <div className="space-y-2">
@@ -216,7 +291,6 @@ export default function DrillDown({ type, data, params, onClose }) {
         </div>
       </div>
 
-      {/* Section Cash à déposer (migré du dashboard principal — décision Mounir 2026-04-29) */}
       <div className="bg-yellow-950 rounded-2xl p-4 border border-yellow-900 mb-3">
         <p className="text-yellow-500 text-xs font-medium mb-1">Cash à déposer</p>
         <p className="text-2xl font-bold font-mono">{fmt(cashADeposer)}</p>
@@ -226,46 +300,151 @@ export default function DrillDown({ type, data, params, onClose }) {
   )
 
   // ───────────────────────────────────────────────────────────────────
-  // Modes 'foodcost' et 'seuil' : conservés tels quels — refonte au
-  // commit 3 (food cost) et commit 2 (seuil).
+  // Drill FOOD COST — refondu pour persona 10h café (commit 2).
+  // 5 sections : hero + ⓘ tooltip · évolution 6 mois · décomposition ·
+  // top fournisseurs · CTA inventaire (si provisoire).
   // ───────────────────────────────────────────────────────────────────
   const renderFoodCost = () => (
     <>
-      <div className="mb-4">
-        <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Food cost · {periode.label || ''}</p>
-        <p className={"text-4xl font-bold font-mono " + (foodCostP > alerteFoodCostMax ? 'text-red-400' : foodCostP > 0 ? 'text-green-400' : 'text-gray-500')}>
-          {foodCostP > 0 ? foodCostP.toFixed(1) + '%' : 'N/A'}
-        </p>
-        {foodCostP > 0 && (
-          <span className={"text-xs px-2 py-0.5 rounded-full border mt-2 inline-block " + (foodCostP > objectifFoodCost ? 'bg-red-950 text-red-400 border-red-900' : 'bg-green-950 text-green-400 border-green-900')}>
-            {foodCostP > objectifFoodCost ? '+' : ''}{(foodCostP - objectifFoodCost).toFixed(1)}pts vs objectif
-          </span>
+      {/* Section 1 — Hero contextuel + ⓘ pédagogique (expand inline) */}
+      <div className="mb-5">
+        <div className="flex justify-between items-start mb-2">
+          <p className="text-xs text-gray-500 uppercase tracking-widest">Food cost · {periode.label || ''}</p>
+          <button
+            onClick={() => setFoodcostTooltipOpen(o => !o)}
+            type="button"
+            className={"flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border " + (data.foodCostMode === 'exact' ? 'bg-green-950 text-green-400 border-green-900' : 'bg-yellow-950 text-yellow-500 border-yellow-900')}
+          >
+            <span className="text-sm leading-none">ⓘ</span>
+            <span>{data.foodCostMode === 'exact' ? 'exact' : 'provisoire'}</span>
+          </button>
+        </div>
+        <div className="flex items-baseline gap-3 mb-1">
+          <p className={"text-4xl font-bold font-mono " + (foodCostP > alerteFoodCostMax ? 'text-red-400' : foodCostP > 0 ? 'text-green-400' : 'text-gray-500')}>
+            {foodCostP > 0 ? foodCostP.toFixed(1) + '%' : 'N/A'}
+          </p>
+          <VariationFoodCostBadge pts={variationFoodCostPts} />
+        </div>
+        <p className="text-xs text-gray-500">vs mois dernier · objectif {objectifFoodCost}%</p>
+
+        {foodcostTooltipOpen && (
+          <div className="mt-3 bg-blue-950/30 border border-blue-900/30 border-l-4 border-l-blue-500 rounded-xl px-4 py-3">
+            <p className="text-sm text-gray-300 leading-relaxed">
+              Le food cost représente le rapport entre les achats de matières premières et le chiffre d'affaires. Il permet de mesurer la part du chiffre d'affaires consacrée à l'alimentation.
+            </p>
+            {data.foodCostMode === 'exact' ? (
+              <p className="text-sm text-gray-300 leading-relaxed mt-3">
+                Ce ratio est exact car calculé avec tes inventaires saisis : (stock début + achats - stock fin) ÷ CA HT.
+              </p>
+            ) : (
+              <p className="text-sm text-gray-300 leading-relaxed mt-3">
+                <span className="font-semibold text-yellow-400">Pourquoi ce ratio est-il provisoire ?</span> Ce ratio est calculé uniquement sur la base des achats saisis à ce jour. Il ne tient pas encore compte de la variation de stock entre le dernier inventaire réalisé et le prochain. Le ratio sera définitif une fois l'inventaire enregistré.
+              </p>
+            )}
+          </div>
         )}
       </div>
-      <StatGrid stats={[
-        { label: 'Objectif', val: objectifFoodCost + '%', color: '' },
-        { label: 'Ecart', val: foodCostP > 0 ? (foodCostP - objectifFoodCost).toFixed(1) + 'pts' : 'N/A', color: foodCostP > objectifFoodCost ? 'r' : 'g' },
-        { label: 'Impact marge', val: foodCostP > 0 && caHT > 0 ? fmt(-(foodCostP - objectifFoodCost) / 100 * caHT) : 'N/A', color: 'r' },
-        { label: 'CA HT', val: fmt(caHT), color: '' },
-      ]} />
-      <div className="bg-blue-950/30 border border-blue-900/30 border-l-4 border-l-blue-500 rounded-xl px-4 py-3 mt-4 mb-4">
-        <p className="text-xs text-blue-400 uppercase tracking-wider mb-1">Comment reduire le food cost</p>
-        <p className="text-sm text-gray-300 leading-relaxed">Food cost = achats matieres / CA HT. Saisis tes achats via le bouton +. Objectif fast-food : 28-32%.</p>
-      </div>
-      {data?.foodCostMode === 'exact' ? (
-        <div className="bg-green-950/30 border border-green-900/30 rounded-xl px-4 py-3">
-          <p className="text-xs text-green-500 font-medium mb-1">Food cost exact</p>
-          <p className="text-xs text-gray-400">Calculé avec les inventaires saisis : (stock début + achats - stock fin) ÷ CA HT.</p>
+
+      {/* Section 2 — Évolution 6 mois */}
+      <div className="mb-5 pt-4 border-t border-gray-800">
+        <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">Évolution sur 6 mois</p>
+        <FoodCostCourbe data={foodCost6Mois} objectif={objectifFoodCost} />
+        <div className="flex justify-between mt-2 text-xs">
+          {moisLeMoinsCher && moisLeMoinsCher.foodCost > 0 ? (
+            <span className="text-green-400">
+              {moisLeMoinsCher.mois} : {moisLeMoinsCher.foodCost.toFixed(1)}% · plus bas
+            </span>
+          ) : <span></span>}
+          {moisActuel && moisActuel.foodCost > 0 && (
+            <span className={moisActuel.foodCost > objectifFoodCost ? 'text-red-400' : 'text-green-400'}>
+              {moisActuel.mois} : {moisActuel.foodCost.toFixed(1)}% · actuel
+            </span>
+          )}
         </div>
-      ) : (
-        <div className="bg-yellow-950/30 border border-yellow-900/30 rounded-xl px-4 py-3">
-          <p className="text-xs text-yellow-500 font-medium mb-1">Food cost estimé</p>
-          <p className="text-xs text-gray-400">Calculé sur les achats saisis manuellement, sans variation de stock. Saisis 2 inventaires dans la période pour un calcul exact.</p>
+      </div>
+
+      {/* Section 3 — Décomposition matières premières */}
+      {decompositionMatieres.length > 0 && (
+        <div className="mb-5 pt-4 border-t border-gray-800">
+          <p className="text-xs text-gray-500 uppercase tracking-widest">D'où vient ce chiffre ?</p>
+          <p className="text-xs text-gray-600 mt-1 mb-3">Décomposition matières premières</p>
+          <div className="space-y-3">
+            {decompositionMatieres.map((d, i) => (
+              <div key={d.sousCategorie || i}>
+                <div className="flex justify-between items-baseline mb-1">
+                  <span className="text-sm text-gray-300">{d.label}</span>
+                  <span className="text-sm font-mono">
+                    {fmt(d.total)} <span className="text-xs text-gray-500 ml-1">{d.pct}%</span>
+                  </span>
+                </div>
+                <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className={"h-full rounded-full " + COULEURS_DECOMPOSITION[i % COULEURS_DECOMPOSITION.length]}
+                    style={{ width: d.pct + '%' }}
+                  ></div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-800">
+            <span className="text-xs text-gray-500 uppercase tracking-wider">Total</span>
+            <span className="text-sm font-mono font-semibold text-white">{fmt(totalDecomposition)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Section 4 — Top 5 fournisseurs Consommations */}
+      {topFournisseurs.length > 0 && (
+        <div className="mb-5 pt-4 border-t border-gray-800">
+          <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">
+            Tes {topFournisseurs.length} plus gros fournisseurs
+          </p>
+          <div className="space-y-1">
+            {topFournisseurs.map(f => (
+              <Link
+                key={f.fournisseur}
+                href={`/analyses/sorties/${encodeURIComponent(f.fournisseur)}?periode=${periode.filtreId || 'ce-mois'}`}
+                className="flex items-center justify-between py-2 px-2 rounded-lg hover:bg-gray-800/50"
+              >
+                <span className="text-sm text-gray-300 truncate flex-1 min-w-0">{f.fournisseur}</span>
+                <div className="flex items-center gap-2 whitespace-nowrap ml-2">
+                  <span className="text-sm font-mono">{fmt(f.total)}</span>
+                  <VariationBadge variation={{ pct: f.variationPct, label: f.variationLabel }} />
+                  <span className="text-gray-600 text-xs">›</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+          <Link
+            href={`/analyses?onglet=sorties&periode=${periode.filtreId || 'ce-mois'}`}
+            className="block mt-3 text-xs text-blue-400 text-center hover:text-blue-300"
+          >
+            Voir tous mes fournisseurs Consommations ›
+          </Link>
+        </div>
+      )}
+
+      {/* Section 5 — CTA passer en exact (uniquement si mode provisoire) */}
+      {data.foodCostMode !== 'exact' && (
+        <div className="bg-yellow-950/40 border border-yellow-900 rounded-2xl p-4 mb-3">
+          <p className="text-sm text-yellow-500 font-semibold mb-1">Passer en food cost exact</p>
+          <p className="text-xs text-gray-300 mb-3 leading-relaxed">
+            Pour avoir un chiffre précis qui tient compte de tes stocks, saisis ton inventaire de fin de mois.
+          </p>
+          <Link
+            href="/parametres?openFab=inventaire"
+            className="inline-block bg-yellow-500 text-gray-950 text-sm font-semibold px-4 py-2 rounded-xl hover:bg-yellow-400 transition"
+          >
+            Saisir mon inventaire
+          </Link>
         </div>
       )}
     </>
   )
 
+  // ───────────────────────────────────────────────────────────────────
+  // Drill SEUIL — conservé tel quel, refonte au commit 3.
+  // ───────────────────────────────────────────────────────────────────
   const renderSeuil = () => (
     <>
       <div className="mb-4">
@@ -313,7 +492,7 @@ export default function DrillDown({ type, data, params, onClose }) {
   const titre = type === 'ca'
     ? "Détail · " + (periode.label || '')
     : type === 'foodcost'
-      ? 'Food cost'
+      ? 'Food cost · ' + (periode.label || '')
       : 'Seuil de rentabilite'
 
   return (
