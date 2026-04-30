@@ -235,40 +235,60 @@ export default function DashboardClient({ data, params, periode }) {
         )
       })()}
 
-      {/* ACCES RAPIDE — sera transformé au commit 3 */}
-      <div className="mt-2">
-        <p className="text-gray-400 text-xs uppercase tracking-widest mb-3">Acces rapide</p>
-        <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
-          {[
-            { href: '/journal', label: 'Journal', sub: 'Transactions du jour · Historique · Saisie', icon: '📋' },
-            { href: '/mix', label: 'Mix ventes', sub: 'Top/Flop produits · Amplitudes', icon: '📊' },
-            { href: '/previsions', label: 'Previsions', sub: 'Projection fin de mois · Simulateur', icon: '🕐' },
-            { href: '/pl', label: 'P&L complet', sub: 'Resume · Detail · Comparaisons', icon: '📈' },
-          ].map(item => (
-            <Link key={item.href} href={item.href}
-              className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 last:border-0 hover:bg-gray-800/50 transition">
-              <div className="w-9 h-9 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center flex-shrink-0">
-                <span>{item.icon}</span>
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium">{item.label}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{item.sub}</p>
-              </div>
-              <span className="text-gray-600">›</span>
-            </Link>
-          ))}
-          <div className="flex items-center gap-3 px-4 py-3 opacity-40">
-            <div className="w-9 h-9 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center flex-shrink-0">
-              <span>💡</span>
+      {/* ACCES RAPIDE — cards contextualisées (commit 4) */}
+      {(() => {
+        const ar = data?.accesRapide || {}
+        const nbTx = ar.nbTransactionsMois || 0
+        const nbEntrees = ar.nbEntreesMois || 0
+        const projection = ar.projectionMensuelle || 0
+        const deltaPct = ar.deltaProjectionPct
+        const margeBrute = ar.margeBruteCeMois
+
+        const subJournal = `${nbTx} transaction${nbTx > 1 ? 's' : ''} · ${nbEntrees} entrée${nbEntrees > 1 ? 's' : ''} ce mois`
+
+        let subPrevisions
+        if (projection > 0) {
+          if (deltaPct !== null && deltaPct !== undefined) {
+            const signe = deltaPct >= 0 ? '+' : ''
+            subPrevisions = `Projection : ${fmt(projection)} fin de mois (${signe}${deltaPct.toFixed(1)}% vs objectif)`
+          } else {
+            subPrevisions = `Projection : ${fmt(projection)} fin de mois`
+          }
+        } else {
+          subPrevisions = 'Voir mes prévisions'
+        }
+
+        const subPL = (margeBrute !== null && margeBrute !== undefined)
+          ? `Marge brute : ${margeBrute.toFixed(1)}% ce mois`
+          : 'Voir mon P&L'
+
+        const cards = [
+          { href: '/journal', label: 'Journal', sub: subJournal },
+          { href: '/previsions', label: 'Prévisions', sub: subPrevisions },
+          { href: '/pl', label: 'P&L complet', sub: subPL }
+        ]
+
+        return (
+          <div className="mt-2">
+            <p className="text-gray-400 text-xs uppercase tracking-widest mb-3">Acces rapide</p>
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
+              {cards.map(item => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 last:border-0 hover:bg-gray-800/50 transition"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{item.label}</p>
+                    <p className="text-xs text-gray-500 mt-0.5 truncate">{item.sub}</p>
+                  </div>
+                  <span className="text-gray-600">›</span>
+                </Link>
+              ))}
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium">Apprendre</p>
-              <p className="text-xs text-gray-400 mt-0.5">Comprendre tes indicateurs</p>
-            </div>
-            <span className="text-xs text-gray-600 bg-gray-800 px-2 py-1 rounded-md">Bientot</span>
           </div>
-        </div>
-      </div>
+        )
+      })()}
 
       {drill && (
         <DrillDown

@@ -68,7 +68,8 @@ export default async function Dashboard({ searchParams }) {
     { data: transactionsPeriodePrec },
     { data: transactionsConso6Mois },
     { data: histCa6Mois },
-    { data: transactionsChargesFixes6Mois }
+    { data: transactionsChargesFixes6Mois },
+    { count: nbEntreesMois }
   ] = await Promise.all([
     getAnalysesKPIs({ parametre_id, since, until, parametres: params }),
     getAnalysesKPIs({ parametre_id, since: periodePrec.since, until: periodePrec.until, parametres: params }),
@@ -87,7 +88,7 @@ export default async function Dashboard({ searchParams }) {
       .lte('date', moisCourant.until),
     supabase
       .from('historique_ca')
-      .select('ca_brut')
+      .select('ca_brut, ca_ht')
       .eq('parametre_id', parametre_id)
       .gte('date', moisCourant.since)
       .lte('date', moisCourant.until),
@@ -134,7 +135,14 @@ export default async function Dashboard({ searchParams }) {
       .eq('parametre_id', parametre_id)
       .in('categorie_pl', CATEGORIES_CHARGES_FIXES)
       .gte('date', debut6Mois)
-      .lte('date', todayISO)
+      .lte('date', todayISO),
+    // Comptage entrées du mois courant (card Acces rapide → Journal)
+    supabase
+      .from('entrees')
+      .select('*', { count: 'exact', head: true })
+      .eq('parametre_id', parametre_id)
+      .gte('date', moisCourant.since)
+      .lte('date', moisCourant.until)
   ])
 
   // ───────────────────────────────────────────────────────────────────
@@ -214,6 +222,37 @@ export default async function Dashboard({ searchParams }) {
     .filter(t => CATEGORIES_CHARGES_FIXES.includes(t.categorie_pl))
     .reduce((s, t) => s + t.montant_ht, 0)
 
+  // ───────────────────────────────────────────────────────────────────
+  // Acces rapide — cards contextualisées (commit 4)
+  // ───────────────────────────────────────────────────────────────────
+  // Marge brute "ce mois" calculée depuis transactionsMois (consommations) + histMois.ca_ht
+  // Indépendant du filtre dashboard pour libellé fixe "ce mois".
+  const consoMoisCourant = (transactionsMois || [])
+    .filter(t => t.categorie_pl === 'consommations')
+    .reduce((s, t) => s + (t.montant_ht || 0), 0)
+  const caHTMoisCourant = (histMois || []).reduce((s, r) => s + (r.ca_ht || 0), 0)
+  const margeBruteCeMois = caHTMoisCourant > 0
+    ? ((caHTMoisCourant - consoMoisCourant) / caHTMoisCourant) * 100
+    : null
+
+  // Projection mensuelle indépendante du filtre (linéaire depuis caMoisCourant)
+  const joursEcoulesMois = now.getDate()
+  const joursTotalMois = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const projectionMensuelle = (caMoisCourant > 0 && joursEcoulesMois > 0)
+    ? (caMoisCourant / joursEcoulesMois) * joursTotalMois
+    : 0
+  const deltaProjectionPct = (projectionMensuelle > 0 && objectifCA > 0)
+    ? ((projectionMensuelle - objectifCA) / objectifCA) * 100
+    : null
+
+  const accesRapide = {
+    nbTransactionsMois: (transactionsMois || []).length,
+    nbEntreesMois: nbEntreesMois || 0,
+    projectionMensuelle,
+    deltaProjectionPct,
+    margeBruteCeMois
+  }
+
   const data = {
     label,
     since,
@@ -250,6 +289,7 @@ export default async function Dashboard({ searchParams }) {
     },
     variations,
     resteAFaire,
+    accesRapide,
     lastSyncDate: derniereDate?.date || null,
     historique: histPeriode || [],
     nbJours: periodeActuelle.nbJours,
