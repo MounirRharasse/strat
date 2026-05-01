@@ -16,6 +16,7 @@ import {
   calculerCouverture6Mois
 } from '@/lib/seuil-rentabilite'
 import { compterAlertesRapide } from '@/lib/audit-saisies'
+import { TVA_UBER_EATS } from '@/lib/data/constants'
 import { getBriefSemaine, getSemainePrecedente } from '@/lib/ia-brief'
 import { formatInTimeZone } from 'date-fns-tz'
 import { parseISO } from 'date-fns'
@@ -197,7 +198,8 @@ export default async function Dashboard({ searchParams }) {
   const foodCost6Mois = calculerFoodCost6Mois(
     transactionsConso6Mois || [],
     histCa6Mois || [],
-    todayISO
+    todayISO,
+    entrees6Mois || []
   )
 
   // ───────────────────────────────────────────────────────────────────
@@ -207,10 +209,12 @@ export default async function Dashboard({ searchParams }) {
   const transactionsChargesFixes30j = filtrer30j(transactionsChargesFixes6Mois || [], now)
   const transactionsConso30j = filtrer30j(transactionsConso6Mois || [], now)
   const histCa30j = filtrer30j(histCa6Mois || [], now)
+  const entreesUber30j = filtrer30j((entrees6Mois || []).filter(e => e.source === 'uber_eats'), now)
 
   const chargesFixes30j = transactionsChargesFixes30j.reduce((s, t) => s + (t.montant_ht || 0), 0)
   const conso30j = transactionsConso30j.reduce((s, t) => s + (t.montant_ht || 0), 0)
-  const caHT30j = histCa30j.reduce((s, r) => s + (r.ca_ht || 0), 0)
+  const caHT30j = histCa30j.reduce((s, r) => s + (r.ca_ht || 0) + (r.uber || 0) / TVA_UBER_EATS, 0)
+    + entreesUber30j.reduce((s, e) => s + (e.montant_ttc || 0) / TVA_UBER_EATS, 0)
 
   const seuilResult = calculerSeuil({ chargesFixes30j, conso30j, caHT30j, periode: periodeActuelle })
   const projectionFinMois = calculerProjection({
@@ -230,6 +234,7 @@ export default async function Dashboard({ searchParams }) {
     transactionsChargesFixes6Mois: transactionsChargesFixes6Mois || [],
     transactionsConso6Mois: transactionsConso6Mois || [],
     histCa6Mois: histCa6Mois || [],
+    entrees6Mois: entrees6Mois || [],
     refDate: now
   })
   const decompositionChargesFixes = decomposerChargesFixes30j(transactionsChargesFixes30j)

@@ -248,6 +248,17 @@ Sur les 23 irritants recensés ci-dessus :
 - **Pistes** : clustering, détection bimodalité, pondération par catégorie
 - **Priorité** : V1.1 (faible, ton "à vérifier" ne trompe pas le user)
 
+## 29. Saisonnalité scolaire dans baseline drop_ca / spike_ca
+
+- **Découvert** : 1er mai 2026 lors de l'audit commit 5 (vacances de Pâques 2026 : W16-W17)
+- **Cas** : `evaluerDropOuSpikeCA` compare le CA d'hier à la moyenne des 4 mêmes DOW précédents. Sur Krousty, W17 a 13 drop_ca consécutifs car la baseline (4 jeudis précédents) inclut majoritairement des jeudis "normaux" hors vacances scolaires.
+- **Impact V1** : sans correction, taux d'activation = 100% pendant les semaines de vacances. Cooldown N=2 limite à ~5-7 events sur 17 jours mais ne supprime pas la racine.
+- **Pistes V1.1** :
+  - Exclure de la baseline les semaines qui chevauchent vacances scolaires de la zone du restaurant
+  - Ou pondérer les samples par "ressemblance contextuelle" (jours fériés, vacances)
+  - Source vacances : api gouvernement open data calendrier scolaire France
+- **Priorité** : V1.1 (cooldown V1 limite l'irritant)
+
 ## 28. ANOMALIE_SYSTEM peut mélanger HT et TTC dans les comparaisons
 
 - **Découvert** : 1er mai 2026 lors du test commit 4 (anomalies bouton "Comprendre")
@@ -261,6 +272,14 @@ Sur les 23 irritants recensés ci-dessus :
   - Soit fournir uniquement le TTC dans les inputs (n'envoyer pas montant_ht au modèle)
   - Soit instruct le modèle dans ANOMALIE_SYSTEM : "Compare uniquement les montants TTC entre eux"
 - **Priorité** : V1.1 (faible)
+
+## 30. Centraliser le calcul "CA HT avec Uber" dans un helper
+
+- **Découvert** : 1er mai 2026 lors de l'audit drop_ca / food_cost commit 5
+- **Cas** : la logique `(ca_ht historique_ca) + (uber historique_ca / TVA_UBER_EATS) + (entrees uber_eats / TVA_UBER_EATS)` est dupliquée 5× après le fix : `analyses-kpis.js`, `seuil-rentabilite.js`, `food-cost-historique.js`, `insight-detection.js`, `dashboard/page.js`.
+- **Symptôme** : tout nouveau calcul caHT a un risque élevé de réintroduire le bug "Uber HT manquant".
+- **Pistes** : créer `lib/data/ca-helpers.js` exportant `caHTAvecUber({ historique, entreesUber })`. Refacto les 5 endroits.
+- **Priorité** : V1.1 (faible — le fix in-place V1 corrige la valeur, le helper sera juste une amélioration de robustesse).
 
 ---
 
