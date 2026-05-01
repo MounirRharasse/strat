@@ -50,6 +50,15 @@ export default function NavBar() {
       )
     },
     {
+      href: '/chat',
+      label: 'Strat IA',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8l-4 4v-4H5a2 2 0 0 1-2-2z"/>
+        </svg>
+      )
+    },
+    {
       href: '/parametres',
       label: 'Paramètres',
       icon: (
