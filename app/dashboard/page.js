@@ -18,6 +18,7 @@ import {
 import { compterAlertesRapide } from '@/lib/audit-saisies'
 import { TVA_UBER_EATS } from '@/lib/data/constants'
 import { getBriefSemaine, getSemainePrecedente } from '@/lib/ia-brief'
+import { getInsightDuJour } from '@/lib/ia-insight'
 import { formatInTimeZone } from 'date-fns-tz'
 import { parseISO } from 'date-fns'
 import { redirect } from 'next/navigation'
@@ -314,6 +315,22 @@ export default async function Dashboard({ searchParams }) {
     }
   }
 
+  // ───────────────────────────────────────────────────────────────────
+  // Card Insight du jour : visible si signal généré pour aujourd'hui (commit 7 IA)
+  // ───────────────────────────────────────────────────────────────────
+  const insight = await getInsightDuJour({ parametre_id, date_ref: dateParisISO })
+  let insightDisponible = null
+  if (insight?.contenu) {
+    insightDisponible = {
+      contenu: insight.contenu,
+      signal_type: insight.signal_type,
+      tier: insight.tier,
+      magnitude: insight.magnitude,
+      generee_le: insight.generee_le,
+      date_ref: dateParisISO
+    }
+  }
+
   const data = {
     label,
     since,
@@ -362,7 +379,8 @@ export default async function Dashboard({ searchParams }) {
       label: periodeActuelle.label,
       nbJours: periodeActuelle.nbJours
     },
-    briefDisponible
+    briefDisponible,
+    insightDisponible
   }
 
   return <DashboardClient data={data} params={params || {}} periode={filtreId} />

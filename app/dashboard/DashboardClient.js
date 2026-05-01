@@ -9,6 +9,22 @@ import DrillDown from './DrillDown'
 const FMT = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
 const fmt = (n) => FMT.format(n || 0)
 
+const SIGNAL_TYPE_LABEL = {
+  drop_ca: 'CA en baisse',
+  spike_ca: 'CA en hausse',
+  food_cost_spike: 'Food cost élevé',
+  fournisseur_hausse: 'Fournisseur en hausse',
+  seuil_atteint: 'Seuil atteint',
+  seuil_decroche: 'Seuil décroché'
+}
+
+const TIER_BADGE_CLASS = {
+  T1: 'bg-yellow-900/40 text-yellow-300 border-yellow-700',
+  T2: 'bg-orange-900/40 text-orange-300 border-orange-700',
+  T3: 'bg-blue-900/40 text-blue-300 border-blue-700',
+  T4: 'bg-green-900/40 text-green-300 border-green-700'
+}
+
 function IndicSynchro({ lastSyncDate }) {
   if (!lastSyncDate) {
     return <p className="text-xs text-red-400 mt-0.5">Aucune donnée synchronisée</p>
@@ -72,6 +88,7 @@ export default function DashboardClient({ data, params, periode }) {
   const seuilCouvertureSparkline = couverture6Mois.map(m => m.couverture)
 
   const briefDispo = data?.briefDisponible
+  const insightDispo = data?.insightDisponible
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4 max-w-md mx-auto pb-24">
@@ -94,6 +111,23 @@ export default function DashboardClient({ data, params, periode }) {
           <p className="text-sm text-gray-200 leading-relaxed">{briefDispo.accroche}</p>
           <p className="text-xs text-gray-500 mt-2">3 forts · 3 vigilance · 3 actions</p>
         </Link>
+      )}
+
+      {insightDispo && (
+        <div className="bg-gradient-to-br from-cyan-950/40 to-teal-950/30 border border-cyan-900/50 rounded-2xl p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs uppercase tracking-widest text-cyan-300">💡 Insight du jour</p>
+            {insightDispo.tier && (
+              <span className={'text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md border ' + (TIER_BADGE_CLASS[insightDispo.tier] || 'bg-gray-800 text-gray-400 border-gray-700')}>
+                {insightDispo.tier}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-200 leading-relaxed mt-2">{insightDispo.contenu}</p>
+          <p className="text-xs text-gray-500 mt-2">
+            Détection : {SIGNAL_TYPE_LABEL[insightDispo.signal_type] || insightDispo.signal_type} · prochain insight demain
+          </p>
+        </div>
       )}
 
       {data?.auditCount?.nbTotal > 0 && (
