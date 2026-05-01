@@ -16,6 +16,9 @@ import {
   calculerCouverture6Mois
 } from '@/lib/seuil-rentabilite'
 import { compterAlertesRapide } from '@/lib/audit-saisies'
+import { getBriefSemaine, getSemainePrecedente } from '@/lib/ia-brief'
+import { formatInTimeZone } from 'date-fns-tz'
+import { parseISO } from 'date-fns'
 import { redirect } from 'next/navigation'
 import DashboardClient from './DashboardClient'
 
@@ -287,6 +290,25 @@ export default async function Dashboard({ searchParams }) {
     ignores: ignoresAudits || []
   })
 
+  // ───────────────────────────────────────────────────────────────────
+  // Card Brief : visible uniquement Mon/Tue/Wed Europe/Paris (commit 3 IA)
+  // ───────────────────────────────────────────────────────────────────
+  const dateParisISO = formatInTimeZone(now, timezone, 'yyyy-MM-dd')
+  const dateParis = parseISO(dateParisISO + 'T12:00:00Z')
+  const dayOfWeekParis = parseInt(formatInTimeZone(now, timezone, 'i'), 10)
+  let briefDisponible = null
+  if ([1, 2, 3].includes(dayOfWeekParis)) {
+    const semainePrecISO = getSemainePrecedente(dateParis)
+    const brief = await getBriefSemaine({ parametre_id, semaine_iso: semainePrecISO })
+    if (brief?.contenu) {
+      const m = brief.contenu.match(/##\s*Résumé\s*\n+([^\n]+)/i)
+      const accroche = m
+        ? m[1].trim().split(/(?<=[.!?])\s/)[0].slice(0, 140)
+        : 'Lecture de la semaine passée'
+      briefDisponible = { semaine_iso: semainePrecISO, accroche }
+    }
+  }
+
   const data = {
     label,
     since,
@@ -334,7 +356,8 @@ export default async function Dashboard({ searchParams }) {
       until: periodeActuelle.until,
       label: periodeActuelle.label,
       nbJours: periodeActuelle.nbJours
-    }
+    },
+    briefDisponible
   }
 
   return <DashboardClient data={data} params={params || {}} periode={filtreId} />

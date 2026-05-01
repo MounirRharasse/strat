@@ -71,6 +71,8 @@ export default function DashboardClient({ data, params, periode }) {
   const couverture6Mois = seuil.couverture6Mois || []
   const seuilCouvertureSparkline = couverture6Mois.map(m => m.couverture)
 
+  const briefDispo = data?.briefDisponible
+
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4 max-w-md mx-auto pb-24">
 
@@ -78,18 +80,33 @@ export default function DashboardClient({ data, params, periode }) {
         <h1 className="text-2xl font-bold tracking-tight">Mon Business</h1>
         <p className="text-blue-400 text-xs mt-0.5">{data.label} · {data.since} → {data.until}</p>
         <IndicSynchro lastSyncDate={lastSyncDate} />
-        {data?.auditCount?.nbTotal > 0 && (
-          <Link
-            href="/journal"
-            className="flex items-center justify-between mt-1 text-xs hover:opacity-80"
-          >
-            <span className={data.auditCount.nbCritiques > 0 ? 'text-red-400' : 'text-yellow-400'}>
-              {data.auditCount.nbCritiques > 0 ? '🔴' : '⚠️'} {data.auditCount.nbTotal} point{data.auditCount.nbTotal > 1 ? 's' : ''} d'attention dans ton journal
-            </span>
-            <span className="text-gray-600">›</span>
-          </Link>
-        )}
       </div>
+
+      {briefDispo && (
+        <Link
+          href={`/brief?semaine=${briefDispo.semaine_iso}`}
+          className="block bg-gradient-to-br from-violet-950/40 to-blue-950/30 border border-violet-900/50 rounded-2xl p-4 mb-4 hover:from-violet-950/60 hover:to-blue-950/50 transition"
+        >
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs uppercase tracking-widest text-violet-300">📊 Brief de ta semaine</p>
+            <span className="text-violet-400">›</span>
+          </div>
+          <p className="text-sm text-gray-200 leading-relaxed">{briefDispo.accroche}</p>
+          <p className="text-xs text-gray-500 mt-2">3 forts · 3 vigilance · 3 actions</p>
+        </Link>
+      )}
+
+      {data?.auditCount?.nbTotal > 0 && (
+        <Link
+          href="/journal"
+          className="flex items-center justify-between mb-4 text-xs hover:opacity-80"
+        >
+          <span className={data.auditCount.nbCritiques > 0 ? 'text-red-400' : 'text-yellow-400'}>
+            {data.auditCount.nbCritiques > 0 ? '🔴' : '⚠️'} {data.auditCount.nbTotal} point{data.auditCount.nbTotal > 1 ? 's' : ''} d'attention dans ton journal
+          </span>
+          <span className="text-gray-600">›</span>
+        </Link>
+      )}
 
       <div className="mb-4">
         <PeriodFilter profil="pilotage" basePath="/dashboard" filtreActif={periode} />
