@@ -273,6 +273,21 @@ Sur les 23 irritants recensés ci-dessus :
   - Soit instruct le modèle dans ANOMALIE_SYSTEM : "Compare uniquement les montants TTC entre eux"
 - **Priorité** : V1.1 (faible)
 
+## 31. INSIGHT_SYSTEM peut répéter le squelette d'hypothèses sur drop_ca
+
+- **Découvert** : 1er mai 2026 lors du test commit 6 (génération IA insight)
+- **Cas** : 4 drop_ca consécutifs W17 (espacés par cooldown N=2) ont chacun
+  proposé "fermeture partielle, météo ou événement externe" comme hypothèses.
+  Le squelette narratif est identique.
+- **Impact** : faible. Le cooldown N=2 limite à 1 drop_ca tous les 3 jours,
+  donc la répétition est diluée.
+- **Pistes V1.1** :
+  - Injecter le jour de la semaine dans des hypothèses spécifiques (lundi
+    → "fin de week-end calme", dimanche → "concurrence brunchs")
+  - Varier les hypothèses selon la magnitude (faible drop = "creux normal",
+    fort drop = "fermeture probable")
+- **Priorité** : V1.1 (faible)
+
 ## 30. Centraliser le calcul "CA HT avec Uber" dans un helper
 
 - **Découvert** : 1er mai 2026 lors de l'audit drop_ca / food_cost commit 5
