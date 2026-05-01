@@ -248,6 +248,20 @@ Sur les 23 irritants recensés ci-dessus :
 - **Pistes** : clustering, détection bimodalité, pondération par catégorie
 - **Priorité** : V1.1 (faible, ton "à vérifier" ne trompe pas le user)
 
+## 28. ANOMALIE_SYSTEM peut mélanger HT et TTC dans les comparaisons
+
+- **Découvert** : 1er mai 2026 lors du test commit 4 (anomalies bouton "Comprendre")
+- **Cas** : explication Appart City 26 avril a comparé "1 153,50 € TTC" (aujourd'hui)
+  avec "961,25 € HT" du 31 mars, sans préciser la différence HT/TTC. Numériquement
+  les 2 valent le même prix réel (961.25 × 1.20 ≈ 1153.50), mais la phrase est
+  bancale ("correspond exactement à celui du 31 mars").
+- **Impact** : faible. L'utilisateur regarde TTC dans le journal, peu probable
+  qu'il remarque. Mais la phrase peut être confuse si lue attentivement.
+- **Pistes** :
+  - Soit fournir uniquement le TTC dans les inputs (n'envoyer pas montant_ht au modèle)
+  - Soit instruct le modèle dans ANOMALIE_SYSTEM : "Compare uniquement les montants TTC entre eux"
+- **Priorité** : V1.1 (faible)
+
 ---
 
 ## Historique

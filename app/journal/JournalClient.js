@@ -110,6 +110,39 @@ function AlerteCard({ alerte, onIgnore }) {
   const couleurTitre = alerte.criticite === 'rouge' ? 'text-red-300' : 'text-yellow-300'
   const href = ctaHrefDe(alerte)
 
+  // Commit 4 IA — bouton "Comprendre" pour les anomalies montant
+  const [explication, setExplication] = useState({ open: false, loading: false, contenu: null, error: null })
+  const isAnomalie = alerte.type === 'anomalie_montant' && alerte.transaction_id
+
+  async function handleComprendre() {
+    if (explication.contenu) {
+      setExplication(s => ({ ...s, open: !s.open }))
+      return
+    }
+    setExplication(s => ({ ...s, loading: true, error: null, open: true }))
+    try {
+      const res = await fetch('/api/ia/anomalie', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_id: alerte.transaction_id })
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        setExplication({ open: true, loading: false, contenu: null, error: data.error || 'erreur' })
+      } else {
+        setExplication({ open: true, loading: false, contenu: data.contenu, error: null })
+      }
+    } catch {
+      setExplication({ open: true, loading: false, contenu: null, error: 'reseau' })
+    }
+  }
+
+  const labelBouton = explication.loading
+    ? 'Analyse en cours…'
+    : explication.contenu
+      ? (explication.open ? '🔼 Masquer l\'explication' : '🔍 Comprendre ce montant')
+      : '🔍 Comprendre ce montant'
+
   return (
     <div className={'border rounded-xl px-4 py-3 ' + cls}>
       <div className="flex items-start justify-between gap-2">
@@ -134,6 +167,27 @@ function AlerteCard({ alerte, onIgnore }) {
         >
           Saisir
         </Link>
+      )}
+      {isAnomalie && (
+        <>
+          <button
+            onClick={handleComprendre}
+            disabled={explication.loading}
+            className="inline-block mt-2 text-xs text-blue-300 hover:text-blue-200 disabled:opacity-50"
+          >
+            {labelBouton}
+          </button>
+          {explication.open && explication.contenu && (
+            <div className="mt-3 border-l-2 border-blue-500 bg-blue-950/20 rounded-r-lg px-3 py-2">
+              <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">{explication.contenu}</p>
+            </div>
+          )}
+          {explication.open && explication.error && (
+            <p className="mt-2 text-xs text-gray-500">
+              Explication indisponible pour le moment. Réessaie plus tard.
+            </p>
+          )}
+        </>
       )}
     </div>
   )
