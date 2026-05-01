@@ -291,9 +291,14 @@ Sur les 23 irritants recensés ci-dessus :
 ## 30. Centraliser le calcul "CA HT avec Uber" dans un helper
 
 - **Découvert** : 1er mai 2026 lors de l'audit drop_ca / food_cost commit 5
-- **Cas** : la logique `(ca_ht historique_ca) + (uber historique_ca / TVA_UBER_EATS) + (entrees uber_eats / TVA_UBER_EATS)` est dupliquée 5× après le fix : `analyses-kpis.js`, `seuil-rentabilite.js`, `food-cost-historique.js`, `insight-detection.js`, `dashboard/page.js`.
+- **Cas** : la logique `(ca_ht historique_ca) + (uber historique_ca / TVA_UBER_EATS) + (entrees uber_eats / TVA_UBER_EATS)` est dupliquée 6× après les fix : `analyses-kpis.js` (×2 : branche else + branche exact), `seuil-rentabilite.js`, `food-cost-historique.js`, `insight-detection.js`, `dashboard/page.js`.
 - **Symptôme** : tout nouveau calcul caHT a un risque élevé de réintroduire le bug "Uber HT manquant".
-- **Pistes** : créer `lib/data/ca-helpers.js` exportant `caHTAvecUber({ historique, entreesUber })`. Refacto les 5 endroits.
+- **URGENCE V1.1 PRIORITAIRE** : 4 bugs distincts trouvés sur la même classe lors du sprint IA Phase 1, c'est trop. La centralisation doit être tôt en V1.1.
+  - Bug 1 (commit 2) : `ca_brut` (nom de colonne) dans `_buildCAParJour` brief
+  - Bug 2 (commit 2) : Uber multi-sources dans `detecterTrousCanal` audit-saisies
+  - Bug 3 (commit 5) : food_cost mode estime branche else `analyses-kpis.js` (+ 4 callers)
+  - Bug 4 (commit 9) : food_cost mode exact branche interne `analyses-kpis.js`
+- **Pistes** : créer `lib/data/ca-helpers.js` exportant `caHTAvecUber({ historique, entreesUber })`. Refacto les 6 endroits.
 - **Priorité** : V1.1 (faible — le fix in-place V1 corrige la valeur, le helper sera juste une amélioration de robustesse).
 
 ---
