@@ -35,50 +35,78 @@ L'objectif des 4 décisions ci-dessous : poser la fondation d'une app **généri
 
 ### Décision #1 — Suppression de `historique_ca` au profit de `ventes_par_source`
 
-**Décision** : `historique_ca` sera supprimée après migration. Une seule source de vérité : `ventes_par_source`.
+> **RÉVISÉE v1.1 — 3 mai 2026** : schéma cible enrichi (3 tables, RLS, slug, integration_config, commissions, fusion `tpa`). Stratégie d'exécution figée par la **Décision #5** (option β : dual-write depuis sources amont).
+
+**Décision** : `historique_ca` sera supprimée après migration. Trois tables cibles forment la nouvelle source de vérité : `sources` (catalogue par tenant), `ventes_par_source` (faits journaliers par canal), `paiements_caisse` (ventilation des modes de paiement de la caisse, axe orthogonal au canal cf. `STRAT_CADRAGE.md` §5).
 
 **Modèle cible** :
 
 ```sql
--- Table sources (paramétrable par tenant)
+-- Catalogue des sources de revenus (paramétrable par tenant)
 CREATE TABLE sources (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  parametre_id UUID NOT NULL REFERENCES parametres(id) ON DELETE CASCADE,
-  nom TEXT NOT NULL,                  -- "Restaurant", "Uber Eats", "Deliveroo"...
-  type TEXT NOT NULL,                 -- 'restaurant' | 'plateforme'
-  actif BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT now()
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  parametre_id       uuid NOT NULL REFERENCES parametres(id) ON DELETE CASCADE,
+  nom                text NOT NULL,                    -- "Restaurant", "Uber Eats"...
+  slug               text,                             -- 'popina', 'uber_eats'...
+  type               text NOT NULL CHECK (type IN ('caisse','plateforme')),
+  actif              boolean NOT NULL DEFAULT true,
+  integration_config jsonb,                            -- credentials, mappings, etc.
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (parametre_id, nom),
+  UNIQUE (parametre_id, slug)
 );
 
--- Table ventes_par_source (table opérationnelle, source de vérité unique)
+-- Faits journaliers : 1 ligne par (jour × source)
 CREATE TABLE ventes_par_source (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  parametre_id UUID NOT NULL REFERENCES parametres(id) ON DELETE CASCADE,
-  source_id UUID NOT NULL REFERENCES sources(id),
-  date DATE NOT NULL,
-  montant_ttc NUMERIC(10,2) NOT NULL,
-  nb_commandes INTEGER,
-  -- ... autres colonnes selon besoin (TVA, commission, etc.)
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE (parametre_id, source_id, date)
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  parametre_id    uuid NOT NULL REFERENCES parametres(id) ON DELETE CASCADE,
+  date            date NOT NULL,
+  source_id       uuid NOT NULL REFERENCES sources(id),
+  montant_ttc     numeric(10,2) NOT NULL,
+  montant_ht      numeric(10,2),
+  nb_commandes    integer,
+  commission_ttc  numeric(10,2),
+  commission_ht   numeric(10,2),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (parametre_id, date, source_id)
+);
+CREATE INDEX idx_vps_param_date ON ventes_par_source (parametre_id, date);
+
+-- Ventilation des modes de paiement (Restaurant uniquement, axe orthogonal)
+CREATE TABLE paiements_caisse (
+  parametre_id  uuid NOT NULL REFERENCES parametres(id) ON DELETE CASCADE,
+  date          date NOT NULL,
+  especes       numeric(10,2),
+  cb            numeric(10,2),
+  tr            numeric(10,2),
+  PRIMARY KEY (parametre_id, date)
 );
 ```
 
-**Toutes les agrégations journalières** (courbes, dashboard, /api/analyses) se feront à la volée par `GROUP BY date` sur `ventes_par_source`.
+**RLS** : activée sur les 3 tables avec policies filtrant par `parametre_id` du user courant (cf. CLAUDE.md §3.1 multi-tenant pooled).
+
+**Conventions** :
+- **Modes de paiement opiniâtres** en V1 : 3 colonnes `especes` / `cb` / `tr` dans `paiements_caisse`. Item dette : migrer en EAV (catalogue + table N lignes/jour) si un client réel demande des modes étendus.
+- **Convention timestamp** : `created_at` (anglais), cohérent avec `historique_ca` legacy et avec la convention dominante des 13 tables actuelles. Seule exception observée : `parametres.date_creation` qui coexiste avec `parametres.created_at` — à investiguer en Phase B/C.
+- **`tpa` Krousty** : la borne self-order (`historique_ca.tpa`) est techniquement du paiement CB et constitue une scorie spécifique mono-tenant qui ne se propage pas en V2. Au backfill historique, `tpa` est fusionné dans `paiements_caisse.cb`. La distinction est perdue post-cutover, reconstituable via `historique_ca` legacy jusqu'au drop en Phase C.
+
+**Toutes les agrégations journalières** (courbes, dashboard, /api/analyses) se feront à la volée par `GROUP BY date` sur `ventes_par_source`, avec jointure `paiements_caisse` pour la ventilation Restaurant.
 
 **Justification** :
 - ✅ Une seule source de vérité = pas de bugs de désynchronisation
 - ✅ Modèle simple à expliquer à un nouveau dev (30 secondes)
 - ✅ Le bug Uber Historique qu'on vient de découvrir est exactement le pattern que la cohabitation `historique_ca` + `ventes_par_source` aurait perpétué
 - ✅ Performance OK : un `GROUP BY` sur 1500 lignes = ~50-80ms (mesuré conceptuellement par Claude Code). Seuil problématique vers 10M lignes (V1 = ~180k lignes pour 10 tenants × 1 an, marge x50)
+- ✅ Axe canal × axe paiement stockés séparément (conforme `STRAT_CADRAGE.md` §5)
 
-**Coût migration** : 15-20h dev one-shot, ~7-8 fichiers à toucher (4 pages serveur + 2 routes API + cron + 2 admin). Migration disruptive — nécessite dual-write puis cutover.
+**Coût migration** : 15-20h dev one-shot, ~7-8 fichiers à toucher (4 pages serveur + 2 routes API + cron + 2 admin). Migration disruptive — stratégie d'exécution détaillée en **Décision #5**.
 
 **Réversibilité** : si problème, A → B (réintroduire un cache `historique_ca`) faisable en ~1 jour.
 
 **Options écartées** :
 - **Option B** (cohabitation `historique_ca` + `ventes_par_source` synchronisées par trigger) : rejetée parce que reproduit exactement le pattern de duplication qui a produit le bug Uber Historique. Le gain perf est marginal (~30ms imperceptibles utilisateur) et non mesuré.
 - **Option C** (vue Postgres lecture seule) : intéressante mais 80% du coût de migration reste là (les écritures doivent toutes migrer vers `ventes_par_source` quand même), perpétue le schéma legacy, et sa latence dégrade avec le volume.
+- **Option vue compat + INSTEAD OF triggers** (envisagée mai 2026) : rejetée au profit de la stratégie strangler de la Décision #5, parce que la sémantique de `historique_ca.ca_brut` n'est pas stable dans le repo actuel — la vue compat aurait imposé de figer une sémantique arbitraire qu'on n'a pas les moyens de valider.
 
 ---
 
@@ -212,6 +240,62 @@ Sans casser la lib pure existante.
 
 ---
 
+### Décision #5 — Stratégie d'exécution de la migration #1 (option β : dual-write depuis sources amont)
+
+> **Ajoutée v1.1 — 3 mai 2026** suite au cadrage Phase A migration data layer.
+
+**Décision** : la nouvelle table `ventes_par_source` est alimentée en dual-write **depuis les sources amont** (API Popina, Excel KS2 pour le backfill historique, Uber pour la suite), **pas depuis `historique_ca`**. La table legacy continue d'être écrite en parallèle pendant la fenêtre de dual-write par le cron existant, jusqu'au cutover des lectures. Stratégie « strangler » : on construit la nouvelle source à côté, on bascule les lectures, on supprime l'ancienne.
+
+**Justification** :
+- ✅ La sémantique de `historique_ca.ca_brut` n'est pas stable dans le repo (3 chemins d'écriture avec 3 sémantiques différentes : cron Popina, import CSV admin, scripts archives). Confirmation empirique sur 15 jours consécutifs (01/01 → 15/01/2025) : 13 jours ont `ca_brut = caisse + uber`, 2 jours ont `ca_brut = caisse seule`, sans pattern temporel.
+- ✅ Hériter de cette sémantique instable pour `ventes_par_source` reproduirait dans la nouvelle table le bug que la migration cherche précisément à éliminer.
+- ✅ Pendant le dual-write, dashboard et P&L lisent encore `historique_ca` et restent dans l'état actuel — déjà considéré comme buggé (cf. `IRRITANTS_UX_V1.md` §30). Le statu quo n'est pas dégradé.
+- ✅ Au cutover, les lectures basculent sur `ventes_par_source` (sémantique propre) et les chiffres se réalignent.
+
+**Sources amont par période** :
+- **2024-04-18 → 2025-01-15 inclus** : import depuis `KS2.xlsx` (fichier personnel Mounir, onglets `Data_CA_N-2` et `Data_CA_N-1`). Source unique pour cette période.
+- **2025-01-16 → aujourd'hui** : import depuis l'API Popina (`getAllReports`). Source unique pour cette période.
+
+**Justification de la frontière au 15/01/2025** :
+- Rétention effective de l'API Popina vérifiée par recherche dichotomique (cf. `scripts/test-retention-popina.mjs` et `scripts/test-retention-popina-frontiere.mjs`) : démarre au 14/01/2025 (frontière nette à la journée).
+- Le 14/01/2025 est incomplet côté API : 484,19 € retournés vs 1 159,35 € de caisse réelle KS2 (~58 % manquant), probablement dû à l'installation de la caisse en cours de journée.
+- Le 15/01/2025 est utilisé comme jour tampon par sécurité.
+- Date d'ouverture Krousty confirmée : 2024-04-18.
+
+**Données NULL acceptées sur la période d'import KS2** :
+- `montant_ht` : NULL (KS2 stocke en TTC seul). Calcul à la lecture avec TVA 10 % par défaut. Item dette : raffiner si produits multi-taux apparaissent.
+- `nb_commandes` : NULL (non tracké avant 01/06/2025).
+- `commission_ttc` / `commission_ht` Uber : NULL (non disponibles dans KS2).
+
+**Devenir de la table `entrees`** : suppression en Phase C selon une séquence stricte :
+1. Backfill des 17 lignes Uber actuelles (`source='uber_eats'`) dans `ventes_par_source`.
+2. Migration du composant FAB pour qu'il écrive directement dans `ventes_par_source`.
+3. `DROP TABLE entrees`.
+
+L'ordre 1 → 2 → 3 est strict :
+- Migrer FAB avant le backfill des 17 lignes existantes ferait perdre ces saisies utilisateur (FAB n'écrit plus dans `entrees`, et les 17 lignes n'auraient pas encore été copiées dans `ventes_par_source`).
+- Dropper `entrees` avant la migration de FAB casserait FAB en prod.
+
+**Idempotence import** : `ON CONFLICT (parametre_id, date, source_id) DO UPDATE` sur `ventes_par_source`. Sur la période d'import KS2, le fichier Excel est la **source de vérité** : toute correction passe par modification dans Excel puis import rejoué, **pas en BDD directement** (sinon écrasée au prochain run).
+
+**Critère de convergence Phase A — révisé** (deux niveaux) :
+- **Test d'intégration** : convergence `ventes_par_source` vs API Popina sur le mois courant. Vérifie que la chaîne de transformation (parsing Popina → classification → agrégation par jour → écriture BDD avec RLS) n'a pas introduit de régression. Convergence attendue à l'euro près sur les jours pleins.
+- **Test sémantique externe** : convergence `ventes_par_source` vs exports Popina mensuels manuels (`jalia_export_accounting_8610_*.xlsx`, fichiers déjà utilisés par `scripts/auto-patch-jours-aberrants.mjs`) sur 2-3 mois récents. Référence indépendante de l'API utilisée à l'écriture, valide que les chiffres remontés sont conformes à la vérité comptable Popina.
+- **Audit visuel post-cutover** : 5-10 dates échantillon (1 par mois sur les 6 derniers mois) pour détecter toute régression macro côté dashboard et P&L.
+
+L'engagement initial (« vérifier convergence dual-write vs `historique_ca` legacy sur 5-10 dates ») est invalide, on ne peut pas converger vers une cible dont la sémantique n'est pas stable. Il est remplacé par les trois critères ci-dessus.
+
+**Cutover — saut visuel attendu** : au moment de la bascule des lectures, dashboard et P&L vont changer brutalement (passage de la sémantique pourrie `historique_ca` à la sémantique propre `ventes_par_source`). Le changement est attendu et bénin. Prévoir un audit visuel avant/après sur les chiffres clés et une note dans le changelog pour Mounir.
+
+**Risque accepté** : pendant la fenêtre de dual-write (cible 2-3 semaines), Mounir continue de voir des chiffres legacy partiellement faux sur dashboard et P&L. Cette dégradation perçue n'en est pas une (statu quo) mais doit être communiquée pour éviter la confusion.
+
+**Options écartées** :
+- **Option α** (stabiliser `historique_ca.ca_brut` AVANT Phase A) : rejetée parce qu'elle suppose qu'on peut trancher rétroactivement la sémantique pour les rows historiques où la source amont n'est plus accessible — ce qui revient à inventer des chiffres ou à figer un bug en place dans une table censée disparaître.
+- **Option γ** (accepter l'imperfection, faire Phase A depuis `historique_ca` malgré l'instabilité) : rejetée parce que `ventes_par_source` naîtrait avec la dette qu'on cherche à éliminer (cf. Décision #1), et le nettoyage Phase B nécessiterait un re-backfill complet depuis l'API Popina — c'est-à-dire le travail de β reporté de quelques semaines.
+- **Option vue compat + INSTEAD OF triggers** : voir Décision #1.
+
+---
+
 ## 3. Principe transversal — Tests obligatoires sur les fonctions pures
 
 Toute fonction pure dans `lib/periods/` ou `lib/calculs/` doit être livrée avec ses tests Vitest. Une fonction pure sans tests est équivalente à du code dupliqué : sans contrat vérifiable, la pureté n'apporte pas plus de garanties qu'un copier-coller.
@@ -261,7 +345,8 @@ Si tu sens qu'une décision ne tient plus (par exemple : perf inattendue, retour
 ## 6. Historique
 
 - **v1.0 (26 avril 2026)** : capture initiale des 4 décisions architecturales prises pendant la session du 26 avril 2026 (débat à 3 voix Mounir / Claude conversationnel / Claude Code).
+- **v1.1 (3 mai 2026)** : enrichissement du schéma cible de la Décision #1 (3 tables, RLS, slug, integration_config, commission, fusion `tpa`) suite au cadrage Phase A migration data layer. Ajout de la Décision #5 fixant la stratégie d'exécution (option β : dual-write depuis sources amont, frontière KS2 / API Popina au 15/01/2025, devenir de `entrees`, critère de convergence révisé).
 
 ---
 
-_Document vivant. Toute modification structurelle d'une des 4 décisions passe par une mise à jour de ce fichier avant implémentation._
+_Document vivant. Toute modification structurelle d'une des 5 décisions passe par une mise à jour de ce fichier avant implémentation._
