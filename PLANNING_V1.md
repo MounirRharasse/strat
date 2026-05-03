@@ -24,7 +24,7 @@ Cette section est un constat factuel d'avancement, **pas une mesure de retard**.
   - **Pas fait** : composant `<AnalyseTable />` réutilisable, import CSV intelligent (libs `papaparse`/`chardet` non installées, pas de `app/admin/imports/upload`), version finale des 4 routes `/api/analyses/{fournisseurs,personnel,categories,sources}` (la route `sources` dépend de la migration data layer en cours).
 - **Phase 3 — IA et finalisation** : 🔄 majoritairement faite **par anticipation calendaire** (livrée fin avril–début mai 2026 alors que la Phase 3 théorique est S7-S8 = juin 2026).
   - **Fait** : 10 commits du sprint IA (`a9bb685` socle → `dbc729a` UI Chat). Tables `ia_signaux`, `ia_socle`, `ia_memoire` créées. `lib/ai.js`, `lib/ia/` (15+ fichiers), routes `app/api/ia/{anomalie,brief,chat,insight}/`. 4 features livrées : Brief lundi, Insight quotidien, Anomalies "Comprendre", Chat conversationnel.
-  - **Pas fait** : Onboarding (Phase 3 S8 prévue, pas amorcée — pas de dossier `app/onboarding`, pas de parcours guidé). Position calendaire pas figée — à programmer plus tard.
+  - **Pas fait** : Onboarding (Phase 3 S8 prévue, pas amorcée — pas de dossier `app/onboarding`, pas de parcours guidé) ; **Charges récurrentes** (acompte V1 = enrichissement `/previsions` avec saisie 1-clic, complet V1.1 = automatisation cron + détection + onboarding step). Position calendaire pas figée — à programmer plus tard.
 
 **Note de méta-discipline** : « Sprint IA Phase 1 » dans les messages de commit IA (`feat(ia): commit X/10 — sprint IA Phase 1`) désigne un découpage **interne au sprint** (commits 1/10 → 10/10), **pas** la Phase 1 du PLANNING (qui est la refondation architecturale). Collision de vocabulaire à garder en tête.
 
@@ -336,6 +336,28 @@ Toutes ces routes filtrent par `parametre_id` via RLS et utilisent `lib/data/` (
 - [ ] Étape 5 : premier import de données (CSV ou connecteur Popina)
 - [ ] Éducation à chaque étape ("voici pourquoi on te demande ça")
 
+**Charges récurrentes (NOUVEAU v1.3 — cf. STRAT_CADRAGE.md §6.5)**
+
+Acompte V1 (~4h, indépendant de l'onboarding, peut être livré avant) :
+
+- [ ] Endpoint `POST /api/charges-recurrentes/saisir` avec idempotence par (parametre_id, categorie_pl, mois)
+- [ ] Refonte `/previsions` : 3 états par échéance (à saisir / déjà saisie / variable à confirmer) + bouton master « Saisir toutes les échéances restantes »
+- [ ] Helper `lib/calculs/charges-mensuelles.js` (détection « déjà saisie ce mois »)
+- [ ] Test manuel Mounir + ajustements
+
+Complet V1.1 (~17h, sprint dédié post-V1) :
+
+- [ ] Migration SQL : tables `charges_types` (catalogue partagé restauration FR), `charges_recurrentes` (paramétrage par tenant), `charges_suggestions` (file de propositions)
+- [ ] Seed `charges_types` : ~15 charges typiques restauration FR avec mapping `categorie_pl` opiniâtre
+- [ ] Détecteur de patterns sur historique transactions (algo : fournisseur+catégorie+jour±5j+montant±15% sur 6+ mois ; cluster jour-du-mois fin/début/milieu/fixe)
+- [ ] Cron mensuel multi-tenant `/api/cron/charges-recurrentes-mensuel`
+- [ ] UI suggestions post-onboarding (bandeau dashboard + page dédiée)
+- [ ] UI maintenance `/parametres/charges-recurrentes`
+- [ ] Onboarding step dédié (étape 2.5 du parcours, après infos générales)
+- [ ] Tests vitest (détecteur + cron + cas limites)
+
+Anti-pattern à éviter : auto-INSERT silencieux sans paramétrage préalable du gérant. Cohérent avec garde-fou « gérant décide » (cf. `STRAT_CADRAGE.md` §6.5).
+
 **Vendredi : Polish, tests end-to-end, préparation**
 
 - [ ] Test complet : nouvel utilisateur → inscription → onboarding → utilisation 1 jour
@@ -453,6 +475,7 @@ Quand tu demandes quelque chose à Claude Code ou à moi dans ce chat, toujours 
 - **v1.0 (avril 2026)** : planning V1 initial sur 8 semaines (Phase 0 sécu + Phase 1 fondations + Phase 2 analyses + Phase 3 IA)
 - **v1.1 (26 avril 2026)** : Phase 1 entièrement refondue suite au débat architectural du 26 avril (cf. `STRAT_ARCHITECTURE.md`). Nouvelle séquence : S1 Périodes + design Sources, S2-3 Code Sources + Calculs, S4 Récup données. Phase 0 marquée comme réalisée. Bilan obligatoire en fin de S1 ajouté. 2 nouveaux anti-patterns ajoutés.
 - **v1.2 (3 mai 2026)** : alignement avec `STRAT_ARCHITECTURE.md` v1.1. Section « État au 03/05/2026 » ajoutée (constat factuel de l'avancement, pas de mesure de retard). Sprint Migration data layer introduit en sous-section de Phase 1, avec découpage en 7 étapes. Section migration Sources L113-150 v1.1 réécrite pour cohérence avec §Décision #5 (sources amont API Popina + KS2, frontière au 15/01/2025, critère convergence 3 niveaux, `paiements_caisse` intégré). 2 puces obsolètes du « Design Sources EN PARALLÈLE » de la Semaine 1 remplacées par un renvoi à la sous-section Sprint. Ambiguïté ✅ préventifs corrigée en `[ ]`/`[x]` explicites dans Critère de sortie Phase 1. Calendrier théorique conservé tel quel — on avance au rythme des sessions.
+- **v1.3 (3 mai 2026)** : ajout section « Charges récurrentes » dans Phase 3 S8 avec découpage acompte V1 (`/previsions` 1-clic, ~4h) et complet V1.1 (tables + cron + onboarding multi-tenant, ~17h). Enrichissement de la ligne « Pas fait » Phase 3 dans §État pour expliciter cette feature manquante. Cf. `STRAT_CADRAGE.md` §6.5 pour le cadrage produit, `IRRITANTS_UX_V1.md` §B5 et §F16 pour les irritants tracés.
 
 ---
 

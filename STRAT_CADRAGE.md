@@ -91,6 +91,25 @@ Sources, catégories custom, objectifs, jours d'ouverture, fournisseurs récurre
 
 ---
 
+## 6.5 Charges récurrentes (V1+)
+
+Les charges fixes mensuelles d'un restaurant — loyer, redevance, expert-comptable, URSSAF, TVA à reverser, commissions plateformes, abonnements (caisse, internet, assurance, sécurité, musique, etc.) — sont **paramétrables par tenant** (montants, jours, fournisseurs) mais le mapping `nom de charge → catégorie P&L` reste **opiniâtre** (cf. §7 plan comptable FR figé).
+
+**Trois profils de charges** distingués :
+- **Fixe** (montant identique chaque mois) : ex. abonnement Free, Vérisure, SACEM. INSERT auto possible.
+- **Variable récurrente** (montant change selon une formule ou contexte) : ex. URSSAF (% des paies), TVA (% du CA HT), commissions plateformes (% des ventes), loyer à paliers. Brouillon auto, validation gérant.
+- **Sporadique** : achats fournisseurs (Metro, Transgourmet, etc.). Saisie manuelle, pas dans le scope charges récurrentes.
+
+**V1 acompte** (mai 2026) : la page `/previsions` enrichie d'un bouton « Saisir » 1-clic par échéance, idempotent (pas de doublon si saisie déjà existante ce mois). Réduit la friction sans nécessiter de nouveau modèle data. Les `parametres.jour_loyer/jour_redevance/jour_honoraires/jour_urssaf/jour_declaration_tva` existants servent de base.
+
+**V1.1** : automatisation complète via tables `charges_types` (catalogue partagé restauration FR seedé une fois) + `charges_recurrentes` (paramétrage par tenant) + `charges_suggestions` (file de propositions à valider) + cron mensuel multi-tenant `/api/cron/charges-recurrentes-mensuel`. L'onboarding (Phase 3 S8 PLANNING) intègre une étape dédiée avec catalogue pré-coché par type de restaurant. La page `/previsions` devient une vue de validation des INSERTs auto + suggestions.
+
+**Garde-fou** : aucune génération automatique de transaction sans paramétrage explicite préalable du gérant. La détection auto (post-onboarding) propose, le gérant valide. Cohérent avec `STRAT_IA.md` §6 « L'IA recommande, le gérant décide » — appliqué aussi à la comptabilité automatisée déterministe.
+
+**Cas particulier mono-tenant Krousty** : la masse salariale (catégorie `frais_personnel`) est traitée comme **agrégat catégoriel** plutôt que par fournisseur individuel, parce que la pratique de saisie a évolué (jusqu'à février 2026 : 1 ligne `Salaires` agrégée ; depuis mars 2026 : 16 lignes nominatives par employé). Le générateur de brouillon mensuel se base sur `SUM(frais_personnel) + SUM(autres_charges WHERE fournisseur IN (...gérants))` sur les 3 derniers mois (cf. IRRITANTS §F15). À documenter pour les futurs tenants : le détecteur multi-tenant doit gérer cette variation de pratique.
+
+---
+
 ## 7. Ce qui reste opiniâtre
 
 Plan comptable FR (14 catégories), TVA FR (0, 5.5, 10, 20), modes de paiement, logique KPIs, modèle transactions (TTC→HT/TVA), français V1.

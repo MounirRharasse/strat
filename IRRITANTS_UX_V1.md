@@ -104,6 +104,14 @@ Quand un irritant remet en cause une décision du cadrage, le mentionner explici
 **Priorité** : moyenne (dépend de la livraison de la feature Inventaire)
 **Estimation** : intégrée dans la feature Inventaire (~3-4h selon cadrage)
 
+### B5 — Charges récurrentes saisies manuellement chaque mois
+**Source** : Mounir, session 3 mai 2026
+**Description** : ~17 charges fixes mensuelles à retaper chaque début de mois via le FAB (loyer, redevance, abonnements, etc.). La page `/previsions` connaît déjà les jours et montants typiques mais ne propose pas de bouton « Saisir » 1-clic.
+**Lien cadrage** : `STRAT_CADRAGE.md` §6.5 (NOUVEAU — cadrage produit charges récurrentes acompte V1 + complet V1.1)
+**Priorité** : haute (friction quotidienne réelle pour Mounir, ~204 saisies/an évitables)
+**Estimation** : 4h acompte V1 (`/previsions` 1-clic) + 17h complet V1.1 (cf. F16 pour le détail technique)
+**Lien archi** : F16 (item technique détaillé), F15 (cas particulier rémunérations gérants Krousty)
+
 ---
 
 ## Catégorie C — Améliorations UX à débattre
@@ -314,6 +322,23 @@ Catégorie introduite le 3 mai 2026 lors de la session de cadrage Phase A migrat
 **Priorité** : V1 (le doc d'archi ment actuellement, à corriger en cohérence)
 **Estimation** : ~5 min (avenant v1.1.1 sur §Décision #1 §RLS + entrée §Historique)
 **Lien archi** : `STRAT_ARCHITECTURE.md` §Décision #1 §RLS (à modifier) + cohérence avec activation RLS qui sera traitée dans le futur sprint « bascule backend vers service_role » (V1+)
+
+### F15 — Rémunérations gérants Krousty catégorisées `autres_charges` par convention métier
+**Source** : confirmation Mounir session 3 mai 2026 lors du diagnostic charges récurrentes
+**Description** : les transactions `Salaire Adil` (5 tx, 18 700 € sur 12 mois) et `Salaire Mounir` (5 tx, 16 000 € sur 12 mois) sont catégorisées `autres_charges` au lieu de `frais_personnel`. Choix volontaire pour faciliter le suivi mental des rémunérations gérants/associés (qui ne suivent pas exactement le régime DSN salarié classique). N'est pas un bug à corriger.
+**Conséquence pour la feature charges récurrentes V1.1** : le détecteur de masse salariale doit traiter ces 2 fournisseurs spécifiques en agrégat masse salariale même s'ils sortent de `frais_personnel`. La formule devient `SUM(frais_personnel) + SUM(autres_charges WHERE fournisseur_nom IN ('Salaire Adil', 'Salaire Mounir'))`. Précédent à documenter pour V1+ multi-tenant : tous les tenants n'auront pas exactement la même convention, prévoir un mécanisme de mapping custom (« quels fournisseurs sont en réalité de la masse salariale chez ce client ? »).
+**Priorité** : V1.1 (à intégrer dans le détecteur charges récurrentes au moment de son codage)
+**Estimation** : intégrée à F16, pas chiffrée séparément
+**Lien archi** : F16 (charges récurrentes), `STRAT_CADRAGE.md` §6.5 (cas particulier mono-tenant Krousty mentionné)
+
+### F16 — Charges récurrentes saisies manuellement chaque mois (feature manquante)
+**Source** : challenge Mounir session 3 mai 2026 (« je suis obligé de les rajouter manuellement chaque mois ? »)
+**Description** : aujourd'hui Mounir saisit manuellement chaque début de mois ses ~17 charges récurrentes (loyer, redevance, expert-comptable, URSSAF, TVA, abonnements Free/Vérisure/SACEM/Téléphone/Assurance/Smart Pro/Compte Pro/Arlo/Amazon Prime/Myli/Atout Box, etc.) via le FAB. Sur 12 mois ça représente ~204 actions de saisie pour ~46 k€ de charges fixes annuelles. La page `/previsions` affiche déjà les échéances à venir (`PreviClient.js:50-95` lit `parametres.jour_*`) mais sans bouton « Saisir » : l'écran sert uniquement à anticiper, pas à agir. Aucune génération automatique de transaction n'existe.
+**Détection auto validée techniquement** (script `/tmp/detect-charges-recurrentes.mjs` lancé sur les 12 derniers mois Krousty) : 17 candidats récurrents identifiables avec confiance haute (11 fixes purs + 6 variables récurrentes type URSSAF/Malakoff/Électricité). 2 anomalies métier à connaître au moment de l'industrialisation : loyer à paliers (3 changements en 12 mois — ne pas le mettre en « fixe pur »), masse salariale traitée en agrégat catégoriel (cf. F15).
+**Priorité V1 (acompte)** : `/previsions` 1-clic, ~4h, pas de nouvelle table, mapping figé loyer/redevance/honoraires/urssaf/tva/commissions + 11 abonnements fixes. Réduit la friction sans bloquer le Sprint Migration data layer en cours.
+**Priorité V1.1 (complet)** : feature multi-tenant complète avec tables `charges_types` + `charges_recurrentes` + `charges_suggestions`, cron mensuel, onboarding step dédié, détecteur de patterns post-installation. ~17h dans un sprint dédié. Cf. `STRAT_CADRAGE.md` §6.5 et `PLANNING_V1.md` v1.3 §Phase 3 S8.
+**Estimation totale** : 4h acompte + 17h complet = 21h
+**Lien archi** : `STRAT_CADRAGE.md` §6.5 (cadrage produit), `PLANNING_V1.md` Phase 3 S8 (planning), F15 (cas particulier rémunérations gérants Krousty)
 
 ---
 
