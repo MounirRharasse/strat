@@ -213,6 +213,103 @@ Quand un irritant remet en cause une décision du cadrage, le mentionner explici
 
 ---
 
+## Catégorie F — Migration data layer / sémantique data
+
+Catégorie introduite le 3 mai 2026 lors de la session de cadrage Phase A migration data layer. Les 13 items ci-dessous sont liés directement à la migration vers `ventes_par_source` + `paiements_caisse` (cf. `STRAT_ARCHITECTURE.md` v1.1 §Décision #5 et `PLANNING_V1.md` v1.2 §Sprint Migration data layer).
+
+### F1 — Sémantique `ca_brut` legacy figée jusqu'au drop
+**Source** : session cadrage Phase A 3 mai 2026
+**Description** : la sémantique de `historique_ca.ca_brut` est instable dans le repo (3 chemins d'écriture avec 3 sémantiques différentes, confirmation empirique sur 15 jours consécutifs 01/01-15/01/2025 où 13 jours ont `ca_brut = caisse + uber` et 2 jours ont `ca_brut = caisse seule`). Décision actée : ne PAS chercher à la stabiliser, la table legacy `historique_ca` reste figée jusqu'à son drop en Phase C de la migration.
+**Priorité** : V1 (gate)
+**Estimation** : aucune — décision de ne pas faire
+**Lien archi** : Cf. `STRAT_ARCHITECTURE.md` §Décision #5 (option β actée pour contourner cette instabilité plutôt que la corriger)
+
+### F2 — Bugs sémantique `ca_brut` côté lectures
+**Source** : audit Claude Code session cadrage Phase A
+**Description** : 6 lieux du code traitent `historique_ca.ca_brut` comme « caisse seule » (`recap-builder.js:87`, `audit-saisies.js:87` et `:446`, `brief-inputs.js:134`, `insight-detection.js:68`, `analyses-kpis.js:92`), 2 lieux le traitent comme « caisse + uber » (`dashboard/page.js:185`, `analyses-kpis.js:95`). Le fichier `analyses-kpis.js` se contredit lui-même entre les lignes 92 et 95. Conséquence : selon l'écran ouvert, les chiffres CA affichés ne sont pas cohérents.
+**Priorité** : V1 (à corriger au moment de la migration des lectures, Étape 5 du Sprint Migration data layer — le cutover résoudra le problème par construction)
+**Estimation** : intégré au Sprint Migration data layer, pas chiffré séparément
+**Lien archi** : connexe à §30 (duplication formule CA HT) mais distinct — §30 traite de la duplication, F2 traite de l'incohérence sémantique de la colonne.
+
+### F3 — Dette TPA Krousty fusion → cb au backfill
+**Source** : décision technique D3 session cadrage Phase A
+**Description** : `historique_ca.tpa` est l'encaissement borne self-order de Krousty, techniquement du paiement CB et constitue une scorie spécifique mono-tenant. En V2, `tpa` est fusionné dans `paiements_caisse.cb` au backfill (cf. `STRAT_ARCHITECTURE.md` §Décision #1, §Conventions). La distinction TPA/CB est perdue post-cutover. Reconstitution possible via `historique_ca.tpa` legacy jusqu'au drop en Phase C.
+**Priorité** : V2 (item dette, pas un bug actif)
+**Estimation** : nulle (dette acceptée)
+**Lien archi** : `STRAT_ARCHITECTURE.md` §Décision #1 §Conventions
+
+### F4 — NULL `nb_commandes` sur 18/04/2024 → 31/05/2025
+**Source** : confirmation Mounir session cadrage Phase A
+**Description** : tracking `nb_commandes` (caisse VSP + plateforme Uber) non saisi avant le 01/06/2025. Toutes les sources sont concernées, pas seulement Uber. Les ~273 jours d'import KS2 (18/04/2024 → 15/01/2025) auront `nb_commandes = NULL` dans `ventes_par_source`. Le futur `lib/calculs/` devra gérer ce NULL pour les agrégats panier moyen, évolution YoY du nb tickets, etc. — soit en excluant la période, soit en la signalant dans l'UI.
+**Priorité** : V1 (à intégrer dans `lib/calculs/` quand il sera centralisé)
+**Estimation** : intégré au design `lib/calculs/`, pas chiffré séparément
+**Lien archi** : couche calculs (Phase 1 PLANNING)
+
+### F5 — NULL `montant_ht` sur période d'import KS2
+**Source** : structure du fichier KS2 (TTC seul, pas de HT)
+**Description** : `ventes_par_source.montant_ht` sera NULL sur toute la période d'import KS2 (18/04/2024 → 15/01/2025). Calcul à la lecture avec TVA 10 % par défaut (restauration sur place / à emporter France). À raffiner si produits multi-taux apparaissent (TVA 5,5 % emporté, 20 % alcool, etc.).
+**Priorité** : V2 (matérialiser HT en BDD si multi-taux devient un cas réel)
+**Estimation** : nulle V1, chantier à scoper si multi-taux
+**Lien archi** : `STRAT_ARCHITECTURE.md` §Décision #5 §Données NULL acceptées
+
+### F6 — NULL commission Uber sur période d'import KS2
+**Source** : structure du fichier KS2
+**Description** : `ventes_par_source.commission_ttc` et `commission_ht` pour la source Uber Eats sont NULL sur toute la période d'import KS2. KS2 ne tracke pas la commission au jour le jour. Disponible uniquement via API/exports Uber pour la période 16/01/2025+.
+**Priorité** : V2
+**Estimation** : à raffiner si reconstitution commissions historiques est demandée
+**Lien archi** : `STRAT_ARCHITECTURE.md` §Décision #5 §Données NULL acceptées
+
+### F7 — Hypothèse non vérifiée sur la rétention API Popina
+**Source** : test rétention session cadrage Phase A (`scripts/test-retention-popina.mjs`)
+**Description** : la frontière de rétention API Popina au 14/01/2025 coïncide avec le premier export Excel Popina disponible côté Mounir. Hypothèse : c'est la date d'activation de la caisse Popina chez Krousty, donc une rétention statique. Hypothèse alternative non exclue : c'est une rétention glissante qui pourrait perdre des jours disponibles dans X mois. Aucun moyen de trancher depuis le client API sans documentation Popina explicite. Conséquence si hypothèse fausse : on perd silencieusement des jours de données dans `ventes_par_source` côté ingestion future.
+**Priorité** : V1.1 (cron de surveillance mensuelle de la frontière à envisager plus tard, hors scope Phase A étape 1)
+**Estimation** : 1 cron léger (5 lignes), à programmer plus tard
+**Lien archi** : Sprint Migration data layer (post-cutover)
+
+### F8 — Dette `parametres` : colonnes timestamp redondantes FR/EN
+**Source** : inventaire timestamps session cadrage Phase A (`scripts/inventaire-timestamps.mjs`)
+**Description** : la table `parametres` est la seule du schéma à avoir des colonnes timestamp redondantes : `created_at` + `date_creation` (français) coexistent, et `updated_at` + `derniere_activite` (français) aussi. AM3 a acté `created_at` (anglais) sur les nouvelles tables, cohérent avec la convention dominante des 13 autres tables. Pour `parametres`, à investiguer en Phase B/C : laquelle est peuplée et laquelle est dépréciée à drop.
+**Priorité** : V1.1 (Phase B ou C de la migration)
+**Estimation** : ~30 min d'investigation + migration de drop
+**Lien archi** : aligné avec la convention nommage de `STRAT_ARCHITECTURE.md` §Décision #1 §Conventions
+
+### F9 — Communication saut visuel attendu au cutover
+**Source** : décision actée session cadrage Phase A
+**Description** : au moment du cutover (Étape 6 Sprint Migration), le dashboard et le P&L vont basculer de la sémantique pourrie `historique_ca` à la sémantique propre `ventes_par_source`. Les chiffres affichés vont changer brutalement par rapport à la veille. Changement attendu et bénin. Prévoir audit visuel avant/après sur 5-10 dates échantillon + note dans le changelog pour Mounir.
+**Priorité** : V1 (à faire au moment du cutover)
+**Estimation** : ~1h audit + ~15min changelog
+**Lien archi** : `STRAT_ARCHITECTURE.md` §Décision #5 §Cutover saut visuel
+
+### F10 — Cron Popina classifie paiements par `nom.includes()` sur 4 mots-clés
+**Source** : audit Claude Code session cadrage Phase A
+**Description** : `app/api/cron/nightly/route.js:67-74` classifie les paiements Popina par `nom.includes()` sur 4 mots-clés : `esp`, `carte|credit`, `borne`, `titre|restaurant`. Tout paiement avec un `paymentName` non reconnu (Edenred, Lunchr, Apple Pay, avoir, etc.) tombe dans aucune des 4 colonnes especes/cb/tpa/tr. Donc même un cron parfaitement sain produit des rows où `ca_brut > especes+cb+tpa+tr`. Cet écart est un signal correct du moteur Popina, pas un bug à corriger. À garder en tête au moment où `paiements_caisse` sera alimenté en V2 : les modes de paiement non standard ne sont pas captés.
+**Priorité** : V2 (lié à la dette EAV de `paiements_caisse`, cf. `STRAT_ARCHITECTURE.md` §Décision #1 §Conventions)
+**Estimation** : à scoper avec la migration EAV
+**Lien archi** : `STRAT_ARCHITECTURE.md` §Décision #1 §Conventions (modes paiement opiniâtres)
+
+### F11 — KS2 contient `nb_commandes` VSP+Uber depuis 01/06/2025 — opportunité validation croisée
+**Source** : structure du fichier KS2 (colonnes V et W)
+**Description** : le fichier KS2 personnel de Mounir tracke `Nb de ticket VSP` (col V) et `Nb de tickets Uber` (col W) à partir du 01/06/2025. Ces données ne sont pas utilisées pour le backfill (la période d'import KS2 s'arrête au 15/01/2025, avant le début du tracking), mais elles peuvent servir d'audit de cohérence avec `ventes_par_source.nb_commandes` post-cutover sur 2025-06-01 → aujourd'hui si besoin.
+**Priorité** : V1.1 (audit optionnel post-cutover, pas un bug)
+**Estimation** : ~1h script audit + analyse
+**Lien archi** : Sprint Migration data layer (post-cutover)
+
+### F12 — Données KS2 ne distinguent pas vide non saisi vs 0 explicite
+**Source** : inspection Claude Code session cadrage Phase A
+**Description** : dans le fichier KS2, une cellule de paiement vide (string '' ou '-   €' formaté monétaire vide) est techniquement indistinguable d'une saisie à 0 €. Au backfill, ces deux formes sont traitées comme 0. Conséquence pratique faible parce que TPA est de toute façon une scorie sortie en V2, mais sur Espèce/CB/TR une cellule non saisie devient 0 dans `paiements_caisse`. Limitation acceptée en l'état, pas de mécanisme de distinction prévu.
+**Priorité** : V2 (pas un bug actif)
+**Estimation** : nulle (dette acceptée)
+**Lien archi** : Sprint Migration data layer Étape 2 (backfill KS2)
+
+### F13 — Idempotence import KS2 : règle de conduite « modifier dans Excel pas en BDD »
+**Source** : décision actée session cadrage Phase A
+**Description** : l'import KS2 utilise `ON CONFLICT (parametre_id, date, source_id) DO UPDATE` sur `ventes_par_source` et `paiements_caisse`. Sur la période d'import (18/04/2024 → 15/01/2025), le fichier Excel KS2 est la source de vérité : toute correction passe par modification dans Excel puis import rejoué. Modifier directement en BDD sur cette période fait perdre la modif au prochain run. À mentionner dans un éventuel doc opérationnel d'usage de la BDD.
+**Priorité** : V1 (règle de conduite, pas un bug)
+**Estimation** : nulle
+**Lien archi** : `STRAT_ARCHITECTURE.md` §Décision #5 §Idempotence import KS2
+
+---
+
 ## Synthèse — comment ce document s'articule avec le sprint archi
 
 Sur les 23 irritants recensés ci-dessus :
@@ -222,6 +319,8 @@ Sur les 23 irritants recensés ci-dessus :
 | Sera fixé "gratuitement" par sprint archi | 4 | A6, B1, D8, E2 (vocabulaire UI, comparaisons vs Objectif, food cost vs quoi, période passée Journal) |
 | Bloqué par sprint archi (Couche 1 sources) | 1 | A2 (CA Uber Eats absent Mix ventes) |
 | Indépendant du sprint archi | 18 | A1, A3, A4, A5, A7, B2, B3, B4, C1-C5, D1-D7, E1 |
+
+Cf. **Catégorie F** pour les irritants spécifiquement liés à la migration data layer (sprint archi en cours, cf. `STRAT_ARCHITECTURE.md` §Décision #5).
 
 **Conclusion** : la majorité des irritants peuvent être traités **après** le sprint archi sans dépendance forte. Mais 5 irritants (A2, A6, B1, D8, E2) bénéficient directement de l'archi propre. C'est un bon ROI pour valider que l'investissement archi en vaut la peine.
 
@@ -300,9 +399,28 @@ Sur les 23 irritants recensés ci-dessus :
   - Bug 4 (commit 9) : food_cost mode exact branche interne `analyses-kpis.js`
 - **Pistes** : créer `lib/data/ca-helpers.js` exportant `caHTAvecUber({ historique, entreesUber })`. Refacto les 6 endroits.
 - **Priorité** : V1.1 (faible — le fix in-place V1 corrige la valeur, le helper sera juste une amélioration de robustesse).
+- **Cf. F2** : l'incohérence sémantique côté lecture (`dashboard:185`, `analyses-kpis:92` vs `:95`) est traitée comme item distinct dans la catégorie F.
+
+---
+
+## 32. Sessions antérieures non closes par commit
+
+- **Découvert** : 3 mai 2026, en clôture de la session de cadrage Phase A migration data layer (commit `3fb6017` STRAT_ARCHITECTURE.md v1.1).
+- **Cas** : `git status` révèle plusieurs features et scripts non committés issus de sessions précédentes, qui cohabitent avec le travail de la session courante :
+  - **Feature `/recap` web** (gérant) : `app/recap/`, `lib/recap-builder.js`, `scripts/recap.mjs`
+  - **Feature `/admin/audit` web** (support) : `app/admin/audit/`, `lib/audit-builder.js`, `scripts/audit-data.mjs`, plus la modif liée `app/admin/layout.js` (ajout du lien sidebar)
+  - **Scripts archives Phase 2 réconciliation Krousty** (one-shot déjà tournés) : `scripts/phase2-execute.mjs`, `scripts/phase2-diagnostic.mjs`, `scripts/auto-patch-jours-aberrants.mjs`
+  - **Scripts audit one-shot Krousty** (diagnostic période avril 2025 → mai 2026) : `audit-4mois-precis.mjs`, `audit-ca-avril.mjs`, `audit-ca-popina-vs-strat.mjs`, `audit-coherence-globale.mjs`, `audit-formule-bug.mjs`, `audit-jours-residuels.mjs`, `audit-uber-4mois.mjs`, `audit-uber-officiel.mjs`
+  - **Checks one-shot KS2/jours** : `check-avril-2026-ks2.mjs`, `check-jours-residuels-api.mjs`, `check-ks2-fantomes.mjs`, `explore-ks2.mjs`
+- **Impact** : pas de bug fonctionnel — les features tournent en local, les scripts sont rejouables. Mais le repo accumule du travail non historisé, ce qui complique la lecture de l'historique git et le partage entre sessions Claude.
+- **Pistes** :
+  - Session dédiée "rangement git" pour trier en quelques commits propres : (1) feature `/recap`, (2) feature `/admin/audit`, (3) archives Phase 2 (peut-être dans un dossier `scripts/archives/` pour les sortir du bruit), (4) scripts audit Krousty.
+  - Pour les sessions futures : convention de fin de session = au moins un commit local de tout ce qui a été produit, même brouillon.
+- **Priorité** : V1.1 — pas urgent (rien ne casse), mais à faire avant que le bruit empêche `git status` de rester lisible.
 
 ---
 
 ## Historique
 
 - **v1.0 (26 avril 2026)** : capture initiale du document de l'associée + retours Mounir de la session du 26 avril
+- **v1.1 (3 mai 2026)** : ajouts post-cadrage initial. §27 à §31 (faux positifs IA, anomalies sémantiques, helper CA HT) ajoutés in-place fin avril/début mai 2026 sans bump de version. §32 (sessions antérieures non closes par commit) ajouté le 3 mai. Catégorie F créée le 3 mai pour regrouper les 13 irritants identifiés lors de la session de cadrage Phase A migration data layer (cf. `STRAT_ARCHITECTURE.md` v1.1 §Décision #5 et `PLANNING_V1.md` v1.2 §Sprint Migration data layer).
