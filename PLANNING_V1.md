@@ -11,6 +11,25 @@ Ce document fixe le plan d'exécution pour livrer la V1 de Strat. Il est opérat
 
 ---
 
+## État au 03/05/2026
+
+Cette section est un constat factuel d'avancement, **pas une mesure de retard**. Le calendrier théorique (Démarrage / Livraison V1 testable / Beta / Lancement public) reste tel qu'écrit ci-dessus, mais on avance au rythme des sessions de travail réelles.
+
+- **Phase 0 — Sécurisation et setup** : ✅ faite (cohérente avec déclaration plus bas).
+- **Phase 1 — Refondation architecturale** : 🔄 partiellement amorcée.
+  - **Fait** : `lib/periods.js` (+ `lib/periods.test.js`), `components/PeriodFilter.js`.
+  - **Pas fait** : tables `sources` / `ventes_par_source` / `paiements_caisse` (= **Sprint Migration data layer** en cours, voir sous-section dédiée Phase 1) ; centralisation `lib/calculs/` (dossier absent) ; helpers `lib/data/{transactions,ventes,parametres}.js` (`lib/data/` existe avec `analyses-kpis.js` et `constants.js` uniquement) ; suppression `historique_ca.uber` ; `<HorizonFilter />` (composant absent) ; multi-tenant fonctionnel bout en bout (Krousty toujours hardcodé dans `lib/auth.js` et plusieurs routes/scripts).
+- **Phase 2 — Analyses et données** : ⏸️ partiellement faite par anticipation.
+  - **Fait** : `app/analyses/page.js` niveau 1, `app/api/analyses/`, `app/analyses/sorties/[fournisseur]/`, `lib/analyses/{recherche,sorties}.js`.
+  - **Pas fait** : composant `<AnalyseTable />` réutilisable, import CSV intelligent (libs `papaparse`/`chardet` non installées, pas de `app/admin/imports/upload`), version finale des 4 routes `/api/analyses/{fournisseurs,personnel,categories,sources}` (la route `sources` dépend de la migration data layer en cours).
+- **Phase 3 — IA et finalisation** : 🔄 majoritairement faite **par anticipation calendaire** (livrée fin avril–début mai 2026 alors que la Phase 3 théorique est S7-S8 = juin 2026).
+  - **Fait** : 10 commits du sprint IA (`a9bb685` socle → `dbc729a` UI Chat). Tables `ia_signaux`, `ia_socle`, `ia_memoire` créées. `lib/ai.js`, `lib/ia/` (15+ fichiers), routes `app/api/ia/{anomalie,brief,chat,insight}/`. 4 features livrées : Brief lundi, Insight quotidien, Anomalies "Comprendre", Chat conversationnel.
+  - **Pas fait** : Onboarding (Phase 3 S8 prévue, pas amorcée — pas de dossier `app/onboarding`, pas de parcours guidé). Position calendaire pas figée — à programmer plus tard.
+
+**Note de méta-discipline** : « Sprint IA Phase 1 » dans les messages de commit IA (`feat(ia): commit X/10 — sprint IA Phase 1`) désigne un découpage **interne au sprint** (commits 1/10 → 10/10), **pas** la Phase 1 du PLANNING (qui est la refondation architecturale). Collision de vocabulaire à garder en tête.
+
+---
+
 ## Contrat de travail
 
 ### Engagement de Mounir
@@ -99,11 +118,10 @@ Sprint multi-tenant déjà entamé en parallèle de la Phase 0 :
 - Toggle "Comparer à la période précédente"
 - `<HorizonFilter />` séparé pour Prévisions (Fin de semaine, Fin de mois, Fin d'année)
 
-**Jeudi-Vendredi : Design Sources EN PARALLÈLE**- Schéma SQL des tables `sources` et `ventes_par_source` sur papier
+**Jeudi-Vendredi : Design Sources EN PARALLÈLE**- Schéma SQL des tables `sources`, `ventes_par_source` et `paiements_caisse` sur papier
 - Validation avec Claude Code et Claude conversationnel
 - Migration SQL écrite (mais **pas exécutée** en S1)
-- Backfill plan détaillé : comment migrer `historique_ca.uber` + `entrees.source='uber_eats'` vers `ventes_par_source`
-- Plan de cutover : ordre de migration des écritures (cron → admin → FAB)
+- Backfill et plan de cutover : voir sous-section **Sprint Migration data layer** ci-dessous (alignée sur `STRAT_ARCHITECTURE.md` §Décision #5).
 - **Pas de code applicatif Sources cette semaine**
 
 **Bilan vendredi** : décider si on continue parallèle en S2-3 ou si on prolonge S1 sur Périodes uniquement (cf. garde-fou Décision #3).
@@ -111,43 +129,35 @@ Sprint multi-tenant déjà entamé en parallèle de la Phase 0 :
 **Compétence 2 (en marchant)** : navigation code pendant la S1.
 
 ### Semaines 2-3 — Code Sources + Calculs
-**Objectif S2-3** : table `sources` + `ventes_par_source` opérationnelles, `historique_ca` déprécié, calculs métier centralisés dans `lib/calculs/`.
 
-**Code Sources (priorité 1)**
+**Objectif S2-3** : trois tables cibles opérationnelles (`sources`, `ventes_par_source`, `paiements_caisse`), `historique_ca` déprécié, calculs métier centralisés dans `lib/calculs/`.
 
-Semaine 2 :
-- Créer table `sources` + seed Krousty (Restaurant + Uber Eats)
-- Créer table `ventes_par_source` (vide)
-- Backfill idempotent depuis `historique_ca.uber` et `entrees.source='uber_eats'`
-- Tests SQL : vérifier que les totaux post-migration matchent les totaux pré-migration
+La mise en œuvre opérationnelle de la migration vers ces tables — sources amont, frontière temporelle, idempotence, critère de convergence, devenir de `entrees`, séquence de cutover — est détaillée dans la sous-section **Sprint Migration data layer** ci-dessous, et le pourquoi-comment dans `STRAT_ARCHITECTURE.md` §Décision #5. Cette sous-section PLANNING expose le quoi-quand ; le détail architectural n'est pas dupliqué ici.
 
-Semaine 3 :
-- Adapter le cron pour écrire dans `ventes_par_source`
-- Migrer chaque page une par une pour lire depuis `ventes_par_source` :
-  - `/dashboard` (Mon Business)
-  - `/pl` (P&L)
-  - `/previsions`
-  - `/api/analyses`
-  - `/api/historique`
-- Suppression définitive de `historique_ca.uber` puis de la table `historique_ca` à terme
-- Adapter `/admin/donnees`, `/admin/imports` pour les nouvelles tables
+### Sprint Migration data layer (en cours, mai 2026)
 
-### Garde-fous opérationnels migration Sources
+Ce sprint exécute la Décision #1 (schéma cible 3 tables) et la Décision #5 (stratégie d'exécution option β) de `STRAT_ARCHITECTURE.md` v1.1. Il remplace l'approche dual-write `historique_ca` ↔ `ventes_par_source` envisagée dans PLANNING_V1 v1.1, désormais abandonnée pour cause de sémantique `historique_ca.ca_brut` instable (cf. §Décision #5).
 
-**Backfill idempotent + dry-run** :
-- Avant la vraie migration, exécuter le script de backfill sur une copie de prod (snapshot Supabase)
-- Vérifier que les totaux post-backfill matchent les totaux pré-backfill (CA brut Krousty avant = CA Krousty après)
-- Le script doit pouvoir être rejoué sans créer de doublons (idempotence vérifiée)
+Sources amont retenues :
+- **18/04/2024 → 15/01/2025 inclus** : Excel KS2 personnel Mounir (onglets `Data_CA_N-2`, `Data_CA_N-1`).
+- **16/01/2025 → aujourd'hui** : API Popina (`getAllReports`).
 
-**Stratégie dual-write** :
-- Le cron écrit simultanément dans historique_ca (legacy) ET ventes_par_source (nouveau) pendant 3 jours minimum
-- Pendant cette période, comparaison automatique des totaux des 2 modèles (alerter si divergence)
-- Cutover : suppression de l'écriture dans historique_ca uniquement après 3 jours sans divergence
+Découpage en 7 étapes. Pas de calendrier figé — on avance au rythme des sessions.
 
-**Lecture seule sur /admin/donnees pendant la migration** :
-- Bandeau "Migration en cours, édition désactivée temporairement"
-- Bouton de modification grisé
-- Réactivation post-cutover
+- [ ] **Étape 1 — Migration SQL idempotente** : créer `sources`, `ventes_par_source`, `paiements_caisse` + RLS par `parametre_id` + seed Krousty (`Restaurant`, `Uber Eats`). Sans backfill encore. Validation manuelle obligatoire avant push.
+- [ ] **Étape 2 — Backfill KS2** : import depuis Excel KS2 vers `ventes_par_source` (sources `popina` + `uber_eats`) et `paiements_caisse` sur la période 18/04/2024 → 15/01/2025. Fusion `tpa → cb`. Validation préalable via le CSV pré-import généré par `scripts/generate-ks2-pre-import-csv.mjs`.
+- [ ] **Étape 3 — Backfill API Popina** : import depuis `getAllReports` vers `ventes_par_source` + `paiements_caisse` sur la période 16/01/2025 → aujourd'hui. Idempotence `ON CONFLICT (parametre_id, date, source_id) DO UPDATE`.
+- [ ] **Étape 4 — Activation dual-write côté cron** : le cron `app/api/cron/nightly/route.js` écrit chaque nuit dans `ventes_par_source` + `paiements_caisse` ET continue d'écrire dans `historique_ca` legacy en parallèle. Fenêtre de dual-write à durée non figée — déterminée selon avancement et résultat des critères de convergence.
+- [ ] **Étape 5 — Migration des lectures** : refacto progressive des consommateurs (`app/dashboard/`, `app/pl/`, `app/journal/`, `app/api/analyses/`, `app/api/historique/`, `lib/data/`, `lib/calculs/`, `lib/ia/`) pour qu'ils consomment `ventes_par_source` + `paiements_caisse` au lieu de `historique_ca`.
+- [ ] **Étape 6 — Cutover** : suppression de l'écriture dans `historique_ca` côté cron, audit visuel avant/après sur 5-10 dates échantillon. Communication à Mounir du saut visuel attendu (passage sémantique pourrie `historique_ca` → sémantique propre `ventes_par_source`).
+- [ ] **Étape 7 — Phase C ultérieure** : `DROP TABLE entrees` et `DROP TABLE historique_ca`. Séquence stricte pour `entrees` : (1) backfill des 17 lignes Uber actuelles vers `ventes_par_source`, (2) migration FAB pour qu'il écrive dans `ventes_par_source`, (3) drop. Cf. §Décision #5 pour le détail.
+
+Critère de convergence (validation Étape 4 → Étape 6) à 3 niveaux, défini dans `STRAT_ARCHITECTURE.md` §Décision #5 :
+- **Test d'intégration** : `ventes_par_source` vs API Popina sur le mois courant (à l'euro près sur les jours pleins).
+- **Test sémantique externe** : `ventes_par_source` vs exports Popina mensuels manuels (`jalia_export_accounting_8610_*.xlsx`) sur 2-3 mois récents.
+- **Audit visuel post-cutover** : 5-10 dates échantillon (1 par mois sur 6 mois).
+
+Anti-pattern explicite : **ne pas alimenter `ventes_par_source` depuis `historique_ca`**. Les sources amont (API Popina, KS2) sont la seule entrée valide. Cf. §Décision #5 pour le pourquoi.
 
 ### Garde-fou S2-3 — Ordre intelligent Calculs/Sources
 
@@ -191,16 +201,18 @@ En parallèle de Sources sur S2-3 :
 
 ### Critère de sortie Phase 1
 
-- ✅ `lib/periods.js` couvre les 9 filtres avec timezone, tests verts
-- ✅ `<PeriodFilter />` fonctionne avec 3 profils, intégré sur 5 pages
-- ✅ `<HorizonFilter />` intégré sur Prévisions
-- ✅ Table `sources` + `ventes_par_source` opérationnelles, `historique_ca.uber` supprimé
-- ✅ Calculs métier centralisés dans `lib/calculs/`, plus de duplication 4×
-- ✅ Helpers `lib/data/` utilisés par toutes les pages
-- ✅ L'app est entièrement multi-tenant fonctionnelle (un nouveau client peut être ajouté sans toucher au code)
-- ✅ Bug Uber Historique (`/api/analyses:84`) résolu par construction (pas de duplication possible)
-- ✅ Bug DST cron fixé
-- ✅ Vocabulaire UI proscrit éliminé (MTD, YTD, 1S, 1M, 6M, 1A)
+Format checklist honnête : `[x]` = fait, `[ ]` = à faire. Cf. §État au 03/05/2026 pour le détail d'avancement.
+
+- [x] `lib/periods.js` couvre les 9 filtres avec timezone, tests verts
+- [ ] `<PeriodFilter />` fonctionne avec 3 profils, intégré sur 5 pages (composant créé, intégration à vérifier)
+- [ ] `<HorizonFilter />` intégré sur Prévisions
+- [ ] Tables `sources` + `ventes_par_source` + `paiements_caisse` opérationnelles, `historique_ca.uber` supprimé
+- [ ] Calculs métier centralisés dans `lib/calculs/`, plus de duplication 4×
+- [ ] Helpers `lib/data/` utilisés par toutes les pages
+- [ ] L'app est entièrement multi-tenant fonctionnelle (un nouveau client peut être ajouté sans toucher au code)
+- [ ] Bug Uber Historique (`/api/analyses:84`) résolu par construction (pas de duplication possible)
+- [ ] Bug DST cron fixé (`app/api/cron/nightly/route.js:34` utilise toujours `(getUTCHours() + 2) % 24`)
+- [ ] Vocabulaire UI proscrit éliminé (MTD, YTD, 1S, 1M, 6M, 1A)
 
 ---
 
@@ -440,6 +452,7 @@ Quand tu demandes quelque chose à Claude Code ou à moi dans ce chat, toujours 
 
 - **v1.0 (avril 2026)** : planning V1 initial sur 8 semaines (Phase 0 sécu + Phase 1 fondations + Phase 2 analyses + Phase 3 IA)
 - **v1.1 (26 avril 2026)** : Phase 1 entièrement refondue suite au débat architectural du 26 avril (cf. `STRAT_ARCHITECTURE.md`). Nouvelle séquence : S1 Périodes + design Sources, S2-3 Code Sources + Calculs, S4 Récup données. Phase 0 marquée comme réalisée. Bilan obligatoire en fin de S1 ajouté. 2 nouveaux anti-patterns ajoutés.
+- **v1.2 (3 mai 2026)** : alignement avec `STRAT_ARCHITECTURE.md` v1.1. Section « État au 03/05/2026 » ajoutée (constat factuel de l'avancement, pas de mesure de retard). Sprint Migration data layer introduit en sous-section de Phase 1, avec découpage en 7 étapes. Section migration Sources L113-150 v1.1 réécrite pour cohérence avec §Décision #5 (sources amont API Popina + KS2, frontière au 15/01/2025, critère convergence 3 niveaux, `paiements_caisse` intégré). 2 puces obsolètes du « Design Sources EN PARALLÈLE » de la Semaine 1 remplacées par un renvoi à la sous-section Sprint. Ambiguïté ✅ préventifs corrigée en `[ ]`/`[x]` explicites dans Critère de sortie Phase 1. Calendrier théorique conservé tel quel — on avance au rythme des sessions.
 
 ---
 
