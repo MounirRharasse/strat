@@ -308,6 +308,13 @@ Catégorie introduite le 3 mai 2026 lors de la session de cadrage Phase A migrat
 **Estimation** : nulle
 **Lien archi** : `STRAT_ARCHITECTURE.md` §Décision #5 §Idempotence import KS2
 
+### F14 — STRAT_ARCHITECTURE §Décision #1 §RLS à corriger
+**Source** : découvert lors de la Phase A étape 1 du Sprint Migration data layer (3 mai 2026)
+**Description** : `STRAT_ARCHITECTURE.md` v1.1 §Décision #1 §RLS dit « RLS activée sur les 3 tables avec policies filtrant par parametre_id du user courant ». En réalité, la convention V1 du repo est « RLS désactivée partout, filtrage côté code via parametre_id, activation prévue V1+ » (cf. commentaire `supabase/migrations/20260428001000_v1_inventaires.sql:38-40`). À la Phase A étape 1, l'option α a été retenue (RLS désactivée alignée V1). Le doc d'archi doit être amendé pour refléter ce report.
+**Priorité** : V1 (le doc d'archi ment actuellement, à corriger en cohérence)
+**Estimation** : ~5 min (avenant v1.1.1 sur §Décision #1 §RLS + entrée §Historique)
+**Lien archi** : `STRAT_ARCHITECTURE.md` §Décision #1 §RLS (à modifier) + cohérence avec activation RLS qui sera traitée dans le futur sprint « bascule backend vers service_role » (V1+)
+
 ---
 
 ## Synthèse — comment ce document s'articule avec le sprint archi

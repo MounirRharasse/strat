@@ -41,7 +41,10 @@ strat-backups/
 *.csv
 *.sql
 !supabase/migrations/*.sql
-backup-*
+backup-*.json
+backup-*.csv
+backup-*.sql
+backup-*.dump
 *-backup
 *-credentials*
 *-secrets*
