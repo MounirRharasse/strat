@@ -1,6 +1,7 @@
 import { getAllReports } from '@/lib/popina'
 import { supabase } from '@/lib/supabase'
 import { getParametreIdFromSession } from '@/lib/auth'
+import { getRowsCompatHCA } from '@/lib/data/ventes'
 import { getPeriodeFromFiltreId } from '@/lib/periods'
 import { redirect } from 'next/navigation'
 import PLClient from './PLClient'
@@ -22,11 +23,12 @@ export default async function PL({ searchParams }) {
 
   const toEuros = (c) => Math.round(c) / 100
 
-  const [reports, { data: transactions }, { data: historique }, { data: entreesUber }] = await Promise.all([
+  // Migration étape 5 Lot 4 : historique + entrees uber → getRowsCompatHCA.
+  // historique[i].uber = VPS uber_eats.montant_ttc (cohérent avec legacy historique_ca.uber).
+  const [reports, { data: transactions }, historique] = await Promise.all([
     getAllReports(since, today),
     supabase.from('transactions').select('*').eq('parametre_id', parametre_id).gte('date', since).lte('date', today),
-    supabase.from('historique_ca').select('uber, nb_commandes').eq('parametre_id', parametre_id).gte('date', since).lte('date', today),
-    supabase.from('entrees').select('*').eq('parametre_id', parametre_id).gte('date', since).lte('date', today).eq('source', 'uber_eats')
+    getRowsCompatHCA(parametre_id, since, today)
   ])
 
   // CA Popina
@@ -34,10 +36,8 @@ export default async function PL({ searchParams }) {
   const tvaCollectee = reports.reduce((s, r) => s + (r.reportTaxes || []).reduce((t, x) => t + toEuros(x.taxAmount), 0), 0)
   const caHTPopina = caBrutPopina - tvaCollectee
 
-  // CA Uber
-  const caUberHistorique = (historique || []).reduce((s, r) => s + (r.uber || 0), 0)
-  const caUberManuel = (entreesUber || []).reduce((s, e) => s + (e.montant_ttc || 0), 0)
-  const caUberTotal = caUberHistorique + caUberManuel
+  // CA Uber (depuis VPS uber_eats via adaptateur)
+  const caUberTotal = (historique || []).reduce((s, r) => s + (r.uber || 0), 0)
 
   // CA Total
   const caBrut = caBrutPopina + caUberTotal

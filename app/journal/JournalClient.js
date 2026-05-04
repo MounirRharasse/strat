@@ -471,7 +471,7 @@ export default function JournalClient({
                     <div className="flex-1">
                       <p className="text-sm font-medium">Uber Eats</p>
                       <p className="text-xs text-gray-500 capitalize">{new Date(h.date + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-                      {h.nb_commandes > 0 && <p className="text-xs text-green-400">{h.nb_commandes} commandes</p>}
+                      {h.nb_commandes_uber > 0 && <p className="text-xs text-green-400">{h.nb_commandes_uber} commandes</p>}
                     </div>
                     <p className="text-sm font-mono font-semibold text-green-400">+{fmt(h.uber)}</p>
                   </div>

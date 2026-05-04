@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { getDailyKPIs } from '@/lib/popina'
 import { getParametreIdFromSession } from '@/lib/auth'
+import { getRowsCompatHCA } from '@/lib/data/ventes'
 import { getAujourdhui, getHier, getPeriodeFromFiltreId } from '@/lib/periods'
 import { auditerJournal, evaluerJour, calculerMediansUberParJourSemaine } from '@/lib/audit-saisies'
 import { redirect } from 'next/navigation'
@@ -34,13 +35,18 @@ export default async function Journal({ searchParams }) {
   debut30jDate.setDate(debut30jDate.getDate() - 29)
   const debut30j = debut30jDate.toISOString().slice(0, 10)
 
+  // Migration étape 5 Lot 4 : historique_ca → getRowsCompatHCA (adaptateur rétro-compat).
+  // entrees garde lecture brute (cf. P1 dette V1+ : auditerJournal audite la saisie FAB).
+  // Le since pour historiquePeriode est ouvert (pas de borne until) : on récupère
+  // toutes les rows depuis since pour reproduire l'ordre legacy desc.
+  // getRowsCompatHCA prend un dateMax → on utilise today pour borner.
   const [
     { data: transactionsPeriode },
     { data: entreesPeriode },
-    { data: historiquePeriode },
+    historiquePeriode,
     { data: transactions6Mois },
     { data: entrees6Mois },
-    { data: historique6Mois },
+    historique6Mois,
     { data: ignores },
     kpisToday,
     kpisYesterday
@@ -49,18 +55,14 @@ export default async function Journal({ searchParams }) {
       .gte('date', since).order('date', { ascending: false }).order('created_at', { ascending: false }),
     supabase.from('entrees').select('*').eq('parametre_id', parametre_id)
       .gte('date', since).order('date', { ascending: false }),
-    supabase.from('historique_ca')
-      .select('date, ca_brut, ca_ht, uber, nb_commandes, especes, cb, tr')
-      .eq('parametre_id', parametre_id).gte('date', since).order('date', { ascending: false }),
+    getRowsCompatHCA(parametre_id, since, today),
     supabase.from('transactions')
       .select('id, date, fournisseur_nom, sous_categorie, categorie_pl, montant_ht, montant_ttc')
       .eq('parametre_id', parametre_id).gte('date', debut6Mois).lte('date', today),
     supabase.from('entrees')
       .select('date, source, montant_ttc')
       .eq('parametre_id', parametre_id).gte('date', debut6Mois).lte('date', today),
-    supabase.from('historique_ca')
-      .select('date, ca_brut, uber, especes')
-      .eq('parametre_id', parametre_id).gte('date', debut6Mois).lte('date', today),
+    getRowsCompatHCA(parametre_id, debut6Mois, today),
     supabase.from('audits_ignores')
       .select('type, cle')
       .eq('parametre_id', parametre_id),

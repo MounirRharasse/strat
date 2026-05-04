@@ -1,6 +1,7 @@
 import { getAllReports, getAllOrders } from '@/lib/popina'
 import { supabase } from '@/lib/supabase'
 import { getParametreIdFromSession } from '@/lib/auth'
+import { getRowsCompatHCA } from '@/lib/data/ventes'
 import { redirect } from 'next/navigation'
 import PreviClient from './PreviClient'
 
@@ -21,12 +22,14 @@ export default async function Previsions() {
 
   const toEuros = (c) => Math.round(c) / 100
 
-  const [reports, orders, { data: transactions }, { data: historique }, { data: entreesUber }, { data: parametres }] = await Promise.all([
+  // Migration étape 5 Lot 4 : historique + entrees uber → getRowsCompatHCA.
+  // historique[i].uber = VPS uber_eats.montant_ttc, nb_commandes_uber = VPS uber_eats.nb_commandes
+  // (sémantique "nb commandes Uber" du legacy, fixée Lot 4).
+  const [reports, orders, { data: transactions }, historique, { data: parametres }] = await Promise.all([
     getAllReports(firstDay, today),
     getAllOrders(firstDay, today),
     supabase.from('transactions').select('*').eq('parametre_id', parametre_id).gte('date', firstDay).lte('date', today),
-    supabase.from('historique_ca').select('*').eq('parametre_id', parametre_id).gte('date', firstDay).lte('date', today),
-    supabase.from('entrees').select('*').eq('parametre_id', parametre_id).gte('date', firstDay).lte('date', today).eq('source', 'uber_eats'),
+    getRowsCompatHCA(parametre_id, firstDay, today),
     supabase.from('parametres').select('*').eq('id', parametre_id).single()
   ])
 
@@ -34,10 +37,8 @@ export default async function Previsions() {
   const caBrutPopina = reports.reduce((s, r) => s + toEuros(r.totalSales), 0)
   const tvaCollectee = reports.reduce((s, r) => s + (r.reportTaxes || []).reduce((t, x) => t + toEuros(x.taxAmount), 0), 0)
 
-  // CA Uber
-  const caUberHist = (historique || []).reduce((s, r) => s + (r.uber || 0), 0)
-  const caUberManuel = (entreesUber || []).reduce((s, e) => s + (e.montant_ttc || 0), 0)
-  const caUberTotal = caUberHist + caUberManuel
+  // CA Uber (depuis VPS uber_eats via adaptateur)
+  const caUberTotal = (historique || []).reduce((s, r) => s + (r.uber || 0), 0)
   const tvaUber = caUberTotal / 1.1 * 0.1
 
   // CA Total
@@ -50,8 +51,8 @@ export default async function Previsions() {
 
   // Commandes
   const nbCmdValides = orders.filter(o => !o.isCanceled).length
-  const nbCmdUber = (historique || []).reduce((s, r) => s + (r.nb_commandes || 0), 0) +
-    (entreesUber || []).reduce((s, e) => s + (e.nb_commandes || 0), 0)
+  // nb_commandes_uber = VPS uber_eats.nb_commandes (sémantique "nb commandes Uber" legacy, fix dette Lot 4)
+  const nbCmdUber = (historique || []).reduce((s, r) => s + (r.nb_commandes_uber || 0), 0)
   const nbCommandes = nbCmdValides + nbCmdUber
   const panierMoyen = nbCommandes > 0 ? caBrut / nbCommandes : 0
   const commandesParJour = nbJoursEcoules > 0 ? Math.round(nbCommandes / nbJoursEcoules) : 150

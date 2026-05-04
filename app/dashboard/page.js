@@ -16,7 +16,12 @@ import {
   calculerCouverture6Mois
 } from '@/lib/seuil-rentabilite'
 import { compterAlertesRapide } from '@/lib/audit-saisies'
-import { TVA_UBER_EATS } from '@/lib/data/constants'
+import {
+  getDerniereDateAvecCreatedAt,
+  getRowsCompatHCA,
+  getCaHtSomme,
+  SOURCE_UBER_EATS_ID,
+} from '@/lib/data/ventes'
 import { getBriefSemaine, getSemainePrecedente } from '@/lib/ia-brief'
 import { getInsightDuJour } from '@/lib/ia-insight'
 import { formatInTimeZone } from 'date-fns-tz'
@@ -63,17 +68,22 @@ export default async function Dashboard({ searchParams }) {
   const debut6MoisDate = new Date(now.getFullYear(), now.getMonth() - 5, 1)
   const debut6Mois = debut6MoisDate.toISOString().slice(0, 10)
 
+  // Migration étape 5 Lot 4 :
+  //   - historique_ca lectures → getRowsCompatHCA (adaptateur rétro-compat).
+  //   - entrees count "ce mois" → count VPS uber_eats sur la période (nb jours uber).
+  //   - entrees 6 mois → reste lecture brute (auditerJournal/compterAlertesRapide consomme entrees, P1).
+  //   - derniereDate → getDerniereDateAvecCreatedAt (M1).
   const [
     kpisActuel,
     kpisPrec,
-    { data: derniereDate },
+    derniereDateRow,
     { data: transactionsMois },
-    { data: histMois },
-    { data: histPeriode },
+    histMois,
+    histPeriode,
     { data: transactionsPeriode },
     { data: transactionsPeriodePrec },
     { data: transactionsConso6Mois },
-    { data: histCa6Mois },
+    histCa6Mois,
     { data: transactionsChargesFixes6Mois },
     { count: nbEntreesMois },
     { data: entrees6Mois },
@@ -81,32 +91,15 @@ export default async function Dashboard({ searchParams }) {
   ] = await Promise.all([
     getAnalysesKPIs({ parametre_id, since, until, parametres: params }),
     getAnalysesKPIs({ parametre_id, since: periodePrec.since, until: periodePrec.until, parametres: params }),
-    supabase
-      .from('historique_ca')
-      .select('date')
-      .eq('parametre_id', parametre_id)
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+    getDerniereDateAvecCreatedAt(parametre_id),
     supabase
       .from('transactions')
       .select('*')
       .eq('parametre_id', parametre_id)
       .gte('date', moisCourant.since)
       .lte('date', moisCourant.until),
-    supabase
-      .from('historique_ca')
-      .select('ca_brut, ca_ht')
-      .eq('parametre_id', parametre_id)
-      .gte('date', moisCourant.since)
-      .lte('date', moisCourant.until),
-    supabase
-      .from('historique_ca')
-      .select('date, ca_brut, nb_commandes')
-      .eq('parametre_id', parametre_id)
-      .gte('date', since)
-      .lte('date', until)
-      .order('date', { ascending: true }),
+    getRowsCompatHCA(parametre_id, moisCourant.since, moisCourant.until),
+    getRowsCompatHCA(parametre_id, since, until),
     supabase
       .from('transactions')
       .select('fournisseur_nom, sous_categorie, montant_ht, categorie_pl')
@@ -129,13 +122,8 @@ export default async function Dashboard({ searchParams }) {
       .eq('categorie_pl', 'consommations')
       .gte('date', debut6Mois)
       .lte('date', todayISO),
-    // CA HT 6 mois jusqu'à today (dénominateur sparkline + marge 30j seuil + audit canal Uber)
-    supabase
-      .from('historique_ca')
-      .select('date, ca_ht, ca_brut, uber, nb_commandes')
-      .eq('parametre_id', parametre_id)
-      .gte('date', debut6Mois)
-      .lte('date', todayISO),
+    // CA 6 mois jusqu'à today via adaptateur (sparkline + marge 30j seuil + audit canal Uber)
+    getRowsCompatHCA(parametre_id, debut6Mois, todayISO),
     // Charges fixes 6 mois jusqu'à today (sparkline couverture seuil + 30j seuil + décomposition)
     supabase
       .from('transactions')
@@ -144,14 +132,16 @@ export default async function Dashboard({ searchParams }) {
       .in('categorie_pl', CATEGORIES_CHARGES_FIXES)
       .gte('date', debut6Mois)
       .lte('date', todayISO),
-    // Comptage entrées du mois courant (card Acces rapide → Journal)
+    // Count "jours uber" sur le mois courant (card Acces rapide → Journal).
+    // Sémantique post-Lot 4 : nb jours avec Uber dans VPS uber_eats (vs nb saisies FAB legacy).
     supabase
-      .from('entrees')
+      .from('ventes_par_source')
       .select('*', { count: 'exact', head: true })
       .eq('parametre_id', parametre_id)
+      .eq('source_id', SOURCE_UBER_EATS_ID)
       .gte('date', moisCourant.since)
       .lte('date', moisCourant.until),
-    // Entrées 6 mois (audit alertes : trous de jours, détection canal)
+    // Entrées 6 mois (audit alertes : trous de jours, détection canal — auditerJournal P1)
     supabase
       .from('entrees')
       .select('date, source, montant_ttc')
@@ -164,6 +154,7 @@ export default async function Dashboard({ searchParams }) {
       .select('type, cle')
       .eq('parametre_id', parametre_id)
   ])
+  const derniereDate = derniereDateRow  // alias rétrocompat (était { data: derniereDate })
 
   // ───────────────────────────────────────────────────────────────────
   // Variations CA / Cmd / Panier
@@ -209,13 +200,16 @@ export default async function Dashboard({ searchParams }) {
   // ───────────────────────────────────────────────────────────────────
   const transactionsChargesFixes30j = filtrer30j(transactionsChargesFixes6Mois || [], now)
   const transactionsConso30j = filtrer30j(transactionsConso6Mois || [], now)
-  const histCa30j = filtrer30j(histCa6Mois || [], now)
-  const entreesUber30j = filtrer30j((entrees6Mois || []).filter(e => e.source === 'uber_eats'), now)
 
   const chargesFixes30j = transactionsChargesFixes30j.reduce((s, t) => s + (t.montant_ht || 0), 0)
   const conso30j = transactionsConso30j.reduce((s, t) => s + (t.montant_ht || 0), 0)
-  const caHT30j = histCa30j.reduce((s, r) => s + (r.ca_ht || 0) + (r.uber || 0) / TVA_UBER_EATS, 0)
-    + entreesUber30j.reduce((s, e) => s + (e.montant_ttc || 0) / TVA_UBER_EATS, 0)
+  // Migration étape 5 Lot 4 : caHT30j via getCaHtSomme (Option X cadrage Lot 4) :
+  // remplace l'agrégat manuel `histCa30j.ca_ht + uber/TVA + entrees/TVA` qui aurait
+  // double-compté l'uber HT post-Lot 3 (histCa6Mois.ca_ht inclut désormais uber/TVA).
+  const debut30jDate = new Date(now)
+  debut30jDate.setDate(debut30jDate.getDate() - 29)
+  const debut30jISO = debut30jDate.toISOString().slice(0, 10)
+  const caHT30j = await getCaHtSomme(parametre_id, debut30jISO, todayISO)
 
   const seuilResult = calculerSeuil({ chargesFixes30j, conso30j, caHT30j, periode: periodeActuelle })
   const projectionFinMois = calculerProjection({
