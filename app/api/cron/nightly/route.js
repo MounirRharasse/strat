@@ -4,6 +4,13 @@ import { buildClassifier } from '@/lib/payments-classifier'
 
 // TODO V1+ : boucler sur tous les parametres actifs au lieu de hardcoder Krousty
 const PARAMETRE_ID_KROUSTY = '68f417f5-b3ea-4b8b-98ea-29b752076e8c'
+// TODO V1+ : fetch dynamique via slug='popina' au lieu de hardcoder l'UUID
+const SOURCE_POPINA_ID_KROUSTY = 'a4e92432-7d3c-4b3f-aafb-745d19e6b2f8'
+
+// Note dual-write étape 4 : le cron écrit dans 3 tables en parallèle
+// (historique_ca legacy + ventes_par_source.popina + paiements_caisse).
+// uber_eats est hors scope — la migration FAB pour qu'il écrive directement
+// dans ventes_par_source.uber_eats arrive en étape 7 (cf. PLANNING_V1.md).
 
 export async function GET(request) {
   // Sécurité — vérifier le token Vercel Cron
@@ -79,22 +86,93 @@ export async function GET(request) {
 
       const nbCommandes = valides.length
 
-      const { error } = await supabase
-        .from('historique_ca')
-        .upsert({
-          parametre_id: PARAMETRE_ID_KROUSTY,
-          date,
-          ca_brut: Math.round(caBrut * 100) / 100,
-          ca_ht: Math.round(caHT * 100) / 100,
-          especes: Math.round(especes * 100) / 100,
-          cb: Math.round(cb * 100) / 100,
-          tpa: Math.round(tpa * 100) / 100,
-          tr: Math.round(tr * 100) / 100,
-          nb_commandes: nbCommandes,
-        }, { onConflict: 'parametre_id,date' })
+      // ─── Push 1/3 : historique_ca (legacy, source de vérité actuelle) ───
+      let hcaError = null
+      {
+        const { error } = await supabase
+          .from('historique_ca')
+          .upsert({
+            parametre_id: PARAMETRE_ID_KROUSTY,
+            date,
+            ca_brut: Math.round(caBrut * 100) / 100,
+            ca_ht: Math.round(caHT * 100) / 100,
+            especes: Math.round(especes * 100) / 100,
+            cb: Math.round(cb * 100) / 100,
+            tpa: Math.round(tpa * 100) / 100,
+            tr: Math.round(tr * 100) / 100,
+            nb_commandes: nbCommandes,
+          }, { onConflict: 'parametre_id,date' })
 
-      if (error) results.steps.push({ step: 'historique_ca', error: error.message })
-      else results.steps.push({ step: 'historique_ca', date, caBrut })
+        if (error) {
+          hcaError = error.message
+          results.steps.push({ step: 'historique_ca', error: error.message })
+        } else {
+          results.steps.push({ step: 'historique_ca', date, caBrut })
+        }
+      }
+
+      // ─── Push 2/3 : ventes_par_source.popina (nouveau, dual-write étape 4) ───
+      let vpsError = null
+      {
+        const { error } = await supabase
+          .from('ventes_par_source')
+          .upsert({
+            parametre_id: PARAMETRE_ID_KROUSTY,
+            date,
+            source_id: SOURCE_POPINA_ID_KROUSTY,
+            montant_ttc: Math.round(caBrut * 100) / 100,
+            montant_ht: Math.round(caHT * 100) / 100,
+            nb_commandes: nbCommandes,
+            commission_ttc: null,
+            commission_ht: null,
+          }, { onConflict: 'parametre_id,date,source_id' })
+
+        if (error) {
+          vpsError = error.message
+          results.steps.push({ step: 'ventes_par_source.popina', error: error.message })
+        } else {
+          results.steps.push({ step: 'ventes_par_source.popina', date })
+        }
+      }
+
+      // ─── Push 3/3 : paiements_caisse (nouveau, dual-write étape 4) ───
+      // Fusion D3 TPA→cb côté pousseur (cohérent étapes 2/3/3-ter) : le classifier
+      // rend 'tpa' brut, on additionne tpa dans cb au moment du push.
+      let pcError = null
+      {
+        const { error } = await supabase
+          .from('paiements_caisse')
+          .upsert({
+            parametre_id: PARAMETRE_ID_KROUSTY,
+            date,
+            especes: Math.round(especes * 100) / 100,
+            cb: Math.round((cb + tpa) * 100) / 100,  // fusion D3
+            tr: Math.round(tr * 100) / 100,
+          }, { onConflict: 'parametre_id,date' })
+
+        if (error) {
+          pcError = error.message
+          results.steps.push({ step: 'paiements_caisse', error: error.message })
+        } else {
+          results.steps.push({ step: 'paiements_caisse', date })
+        }
+      }
+
+      // ─── Stratégie d'erreur "legacy first" (cf. cadrage étape 4 Q2) ───
+      // HCA reste source de vérité tant que l'étape 6 (cutover) n'est pas faite.
+      // Échec HCA = vraie alerte Vercel (HTTP 500). Échec VPS ou PC = warning
+      // dans body (best-effort, le re-run manuel idempotent ON CONFLICT répare).
+      if (hcaError) {
+        return Response.json(
+          { ...results, success: false, error: 'historique_ca write failed', details: hcaError },
+          { status: 500 }
+        )
+      }
+      if (vpsError || pcError) {
+        results.warnings = []
+        if (vpsError) results.warnings.push({ table: 'ventes_par_source.popina', error: vpsError })
+        if (pcError) results.warnings.push({ table: 'paiements_caisse', error: pcError })
+      }
     }
 
     results.success = true
