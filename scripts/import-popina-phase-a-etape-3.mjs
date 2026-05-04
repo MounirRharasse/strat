@@ -50,19 +50,11 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_A
 
 const { supabase } = await import('../lib/supabase.js')
 const { getAllReports, getAllOrders } = await import('../lib/popina.js')
+const { buildClassifier } = await import('../lib/payments-classifier.js')
 
 // ─── Helpers ────────────────────────────────────────────────────────
 const toEuros = c => Math.round(c) / 100
 const r2 = n => Math.round(n * 100) / 100
-
-function classifyPayment(name) {
-  const n = (name || '').toLowerCase()
-  if (n.includes('esp')) return 'especes'
-  if (n.includes('carte') || n.includes('credit') || n.includes('crédit')) return 'cb'
-  if (n.includes('borne')) return 'tpa'
-  if (n.includes('titre') || n.includes('restaurant')) return 'tr'
-  return 'autre'  // Edenred, Lunchr, Apple Pay : pas captés dans paiements_caisse (item F10)
-}
 
 function serialToISO(n) {
   const epoch = new Date(Date.UTC(1899, 11, 30))
@@ -121,13 +113,16 @@ if (errSrc || !sourceRows || sourceRows.length !== 1) {
 const SOURCE_POPINA_ID = sourceRows[0].id
 console.log(`✓ source_id popina    : ${SOURCE_POPINA_ID}`)
 
+const classifier = await buildClassifier(KROUSTY_ID)
+console.log(`✓ classifier paiements : ${classifier.rules.length} règles chargées (cf. parametres.config_paiements_classifier)`)
+
 // ─── 2. Lecture API Popina mois par mois ────────────────────────────
 console.log()
 console.log('━'.repeat(70))
 console.log('  FETCH API POPINA (mois par mois)')
 console.log('━'.repeat(70))
 
-const apiParJour = {}  // ISO → { ttc, ht, nb_orders, paiements: { especes, cb, tpa, tr, autre } }
+const apiParJour = {}  // ISO → { ttc, ht, nb_orders, paiements: { especes, cb, tpa, tr } }
 const months = listMonths(PERIOD_START, PERIOD_END)
 for (const month of months) {
   process.stdout.write(`  ${month.since} → ${month.until} ... `)
@@ -140,15 +135,22 @@ for (const month of months) {
     const date = (r.startedAt || r.finalizedAt || '').slice(0, 10)
     if (!date || date < PERIOD_START || date > PERIOD_END) continue
     if (!apiParJour[date]) {
-      apiParJour[date] = { ttc: 0, ht: 0, nb_orders: 0, paiements: { especes: 0, cb: 0, tpa: 0, tr: 0, autre: 0 } }
+      apiParJour[date] = { ttc: 0, ht: 0, nb_orders: 0, paiements: { especes: 0, cb: 0, tpa: 0, tr: 0 } }
     }
     const ttc = toEuros(r.totalSales || 0)
     const tva = (r.reportTaxes || []).reduce((s, t) => s + toEuros(t.taxAmount || 0), 0)
     apiParJour[date].ttc += ttc
     apiParJour[date].ht += (ttc - tva)
     for (const p of (r.reportPayments || [])) {
-      const cat = classifyPayment(p.paymentName)
-      apiParJour[date].paiements[cat] += toEuros(p.paymentAmount || 0)
+      const m = toEuros(p.paymentAmount || 0)
+      const cat = classifier.classify(p.paymentName)
+      if (cat === 'especes' || cat === 'cb' || cat === 'tpa' || cat === 'tr') {
+        apiParJour[date].paiements[cat] += m
+      } else if (cat === 'ignored') {
+        // skip — ex: avoirs Krousty (-19 € total négligeable)
+      } else {
+        console.warn(`[import-popina-3] paymentName non classifié date=${date} : "${p.paymentName}" (${m.toFixed(2)} €)`)
+      }
     }
   }
   for (const o of orders || []) {
@@ -156,7 +158,7 @@ for (const month of months) {
     const date = (o.openedAt || o.createdAt || '').slice(0, 10)
     if (!date || date < PERIOD_START || date > PERIOD_END) continue
     if (!apiParJour[date]) {
-      apiParJour[date] = { ttc: 0, ht: 0, nb_orders: 0, paiements: { especes: 0, cb: 0, tpa: 0, tr: 0, autre: 0 } }
+      apiParJour[date] = { ttc: 0, ht: 0, nb_orders: 0, paiements: { especes: 0, cb: 0, tpa: 0, tr: 0 } }
     }
     apiParJour[date].nb_orders++
   }
@@ -301,10 +303,48 @@ console.log(`    sum especes                 : ${sumEsp.toFixed(2)} €`)
 console.log(`    sum cb (avec TPA fusionné)  : ${sumCB.toFixed(2)} €`)
 console.log(`    sum tr                      : ${sumTR.toFixed(2)} €`)
 console.log(`    sum especes+cb+tr           : ${(sumEsp + sumCB + sumTR).toFixed(2)} €`)
-console.log(`    Δ vs sum popina (= 'autre' Edenred/Lunchr non capturé) : ${(sumPopina - (sumEsp + sumCB + sumTR)).toFixed(2)} €`)
+console.log(`    Δ vs sum popina (≈ 0 si classifier exhaustif, sauf avoirs ignorés ~-19€) : ${(sumPopina - (sumEsp + sumCB + sumTR)).toFixed(2)} €`)
 console.log()
 console.log(`  Plage temporelle              : ${dateMin} → ${dateMax}`)
 console.log('━'.repeat(70))
+
+// ─── 5b. Garde-fou anti-drift API (cf. cadrage étape 3-ter Q4) ──────
+console.log()
+console.log('━'.repeat(70))
+console.log('  GARDE-FOU ANTI-DRIFT API')
+console.log('━'.repeat(70))
+
+const [vpsExistRes, pcExistRes] = await Promise.all([
+  supabase.from('ventes_par_source').select('montant_ttc')
+    .eq('parametre_id', KROUSTY_ID).eq('source_id', SOURCE_POPINA_ID)
+    .gte('date', PERIOD_START).lte('date', PERIOD_END),
+  supabase.from('paiements_caisse').select('especes, cb, tr')
+    .eq('parametre_id', KROUSTY_ID)
+    .gte('date', PERIOD_START).lte('date', PERIOD_END),
+])
+
+const sumPopinaActuel = r2((vpsExistRes.data || []).reduce((s, x) => s + Number(x.montant_ttc || 0), 0))
+const sumCaisseActuel = r2((pcExistRes.data || []).reduce((s, x) => s + Number(x.especes || 0) + Number(x.cb || 0) + Number(x.tr || 0), 0))
+const sumCaisseNouveau = r2(sumEsp + sumCB + sumTR)
+const deltaTtc = r2(sumPopina - sumPopinaActuel)
+const deltaCaisse = r2(sumCaisseNouveau - sumCaisseActuel)
+const driftAlert = Math.abs(deltaTtc) >= 100
+
+console.log(`  sum popina TTC actuel    : ${sumPopinaActuel.toFixed(2)} €`)
+console.log(`  sum popina TTC nouveau   : ${sumPopina.toFixed(2)} €`)
+console.log(`  Δ TTC                    : ${deltaTtc.toFixed(2)} € → ${driftAlert ? '⚠️ DRIFT ≥ 100€ DÉTECTÉ' : '✅ < 100€'}`)
+console.log(`  sum caisse actuel        : ${sumCaisseActuel.toFixed(2)} €`)
+console.log(`  sum caisse nouveau       : ${sumCaisseNouveau.toFixed(2)} €`)
+console.log(`  Δ caisse                 : ${deltaCaisse.toFixed(2)} € (attendu ≈ +421 855 € à l'étape 3-ter, après refacto classifier)`)
+console.log('━'.repeat(70))
+
+if (driftAlert) {
+  console.error()
+  console.error('🛑 STOP — drift API détecté (|Δ TTC popina| ≥ 100 €).')
+  console.error('   Hypothèse : Popina a retraité des reports historiques entre étape 3 (initiale) et maintenant.')
+  console.error('   Investigue avant relance. Aucune écriture lancée.')
+  process.exit(1)
+}
 
 // ─── 6. Dry-run : STOP ici ──────────────────────────────────────────
 if (DRY_RUN) {

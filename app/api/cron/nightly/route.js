@@ -1,5 +1,6 @@
 import { getAllOrders, getAllReports } from '@/lib/popina'
 import { supabase } from '@/lib/supabase'
+import { buildClassifier } from '@/lib/payments-classifier'
 
 // TODO V1+ : boucler sur tous les parametres actifs au lieu de hardcoder Krousty
 const PARAMETRE_ID_KROUSTY = '68f417f5-b3ea-4b8b-98ea-29b752076e8c'
@@ -63,14 +64,17 @@ export async function GET(request) {
       const caHT = caBrut - tva
 
       const allPayments = reports.flatMap(r => r.reportPayments || [])
+      const classifier = await buildClassifier(PARAMETRE_ID_KROUSTY)
       let especes = 0, cb = 0, tpa = 0, tr = 0
       for (const p of allPayments) {
-        const nom = (p.paymentName || '').toLowerCase()
         const m = toEuros(p.paymentAmount)
-        if (nom.includes('esp')) especes += m
-        else if (nom.includes('carte') || nom.includes('credit')) cb += m
-        else if (nom.includes('borne')) tpa += m
-        else if (nom.includes('titre') || nom.includes('restaurant')) tr += m
+        const cat = classifier.classify(p.paymentName)
+        if (cat === 'especes') especes += m
+        else if (cat === 'cb') cb += m
+        else if (cat === 'tpa') tpa += m
+        else if (cat === 'tr') tr += m
+        else if (cat === 'ignored') continue
+        else console.warn(`[cron-nightly] paymentName non classifié : "${p.paymentName}" (${m.toFixed(2)} €)`)
       }
 
       const nbCommandes = valides.length
