@@ -288,12 +288,12 @@ Catégorie introduite le 3 mai 2026 lors de la session de cadrage Phase A migrat
 **Estimation** : ~1h audit + ~15min changelog
 **Lien archi** : `STRAT_ARCHITECTURE.md` §Décision #5 §Cutover saut visuel
 
-### F10 — Cron Popina classifie paiements par `nom.includes()` sur 4 mots-clés
-**Source** : audit Claude Code session cadrage Phase A
-**Description** : `app/api/cron/nightly/route.js:67-74` classifie les paiements Popina par `nom.includes()` sur 4 mots-clés : `esp`, `carte|credit`, `borne`, `titre|restaurant`. Tout paiement avec un `paymentName` non reconnu (Edenred, Lunchr, Apple Pay, avoir, etc.) tombe dans aucune des 4 colonnes especes/cb/tpa/tr. Donc même un cron parfaitement sain produit des rows où `ca_brut > especes+cb+tpa+tr`. Cet écart est un signal correct du moteur Popina, pas un bug à corriger. À garder en tête au moment où `paiements_caisse` sera alimenté en V2 : les modes de paiement non standard ne sont pas captés.
-**Priorité** : V2 (lié à la dette EAV de `paiements_caisse`, cf. `STRAT_ARCHITECTURE.md` §Décision #1 §Conventions)
-**Estimation** : à scoper avec la migration EAV
-**Lien archi** : `STRAT_ARCHITECTURE.md` §Décision #1 §Conventions (modes paiement opiniâtres)
+### F10 — Classifier paiements Popina paramétrable par tenant
+**Source** : audit Claude Code session cadrage Phase A + diagnostic session 04/05/2026 (`scripts/diag-paiements-autre.mjs`)
+**Description** : `app/api/cron/nightly/route.js:67-74` et `scripts/import-popina-phase-a-etape-3.mjs:58-65` classifient les paiements Popina par `nom.includes()` sur 4 mots-clés : `esp`, `carte|credit`, `borne`, `titre|restaurant`. Tout `paymentName` non reconnu tombe dans la classe `autre`, qui n'est captée par aucune colonne de `paiements_caisse` (especes/cb/tr). Diagnostic Krousty sur 16/01/2025 → 02/05/2026 : **421 776 € classés `autre` = 35% du CA Restaurant**, dont 97% `Foxorder` (kiosque self-service Krousty), 3% `Payxpert` (PSP CB), 0% `Avoir` (-19 €, remboursements négligeables). Tous ces paiements sont matériellement des CB. Solution : classifier paramétrable par tenant (table `paiement_classification` ou config JSON dans `parametres`), seed Krousty `Foxorder→cb`, `Payxpert→cb`, `Avoir→ignoré`. Respecte CLAUDE.md §4 L83 (pas de hardcoding par nom de plateforme/identité client : un autre tenant aurait un kiosque nommé différemment).
+**Priorité** : **V1 — Sprint Migration data layer Étape 3-ter, BLOQUANTE avant Étape 5** (sinon migration des lectures hérite de paiements_caisse incomplet de 35% sur Krousty)
+**Estimation** : ~3-4h (cadrage modèle paramétrable + migration SQL + seed Krousty + refacto classifier dans `lib/` + tests + backfill rétroactif des rows déjà importées en étape 3)
+**Lien archi** : `STRAT_ARCHITECTURE.md` §Décision #1 §Conventions (modes paiement opiniâtres) ; `PLANNING_V1.md` §Sprint Migration data layer Étape 3-ter ; `CLAUDE.md` §4 L83 (règle anti-hardcoding)
 
 ### F11 — KS2 contient `nb_commandes` VSP+Uber depuis 01/06/2025 — opportunité validation croisée
 **Source** : structure du fichier KS2 (colonnes V et W)
