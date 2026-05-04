@@ -28,6 +28,14 @@ const WHITELIST = new Set([
   // CRUD FAB pour entrees — entrees reste source de saisie jusqu'à étape 7
   // (migration FAB pour qu'il écrive directement dans ventes_par_source.uber_eats)
   'app/api/entrees/route.js',
+  // REFONTE ADMIN V1+ : sortie de la migration étape 5, à reprendre
+  // dans un sprint dédié. Ces fichiers continueront à lire
+  // historique_ca et entrees jusqu'à la refonte. À l'étape 7 (drop
+  // legacy), ces fichiers casseront → la refonte admin doit être
+  // faite avant l'étape 7.
+  'app/admin/page.js',
+  'app/admin/donnees/page.js',
+  'app/admin/monitoring/page.js',
 ])
 
 // Liste des fichiers tracked sous app/ et lib/ avec extensions JS
