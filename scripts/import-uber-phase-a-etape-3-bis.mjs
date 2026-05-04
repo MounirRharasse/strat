@@ -44,7 +44,7 @@ if (existsSync(envPath)) {
 const KS2_FILE = '/Users/mRharasse/Downloads/KS2 (1) (5).xlsx'
 const KROUSTY_SLUG = 'krousty-sabaidi-montpellier-castelnau'
 const PERIOD_START = '2025-01-16'
-const PERIOD_END   = '2026-05-02'
+const PERIOD_END   = '2026-05-04'
 const KS2_NB_COMMANDES_DEPUIS = '2025-06-01'  // cf. F4 IRRITANTS
 const BATCH_SIZE   = 200
 const DRY_RUN = process.argv.includes('--dry-run')

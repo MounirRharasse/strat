@@ -1,5 +1,15 @@
-import { supabase } from '@/lib/supabase'
 import { getParametreIdFromSession } from '@/lib/auth'
+import { getRowsCompatHCA } from '@/lib/data/ventes'
+
+// ⚠ ENDPOINT POTENTIELLEMENT ORPHELIN (étape 5 Lot 3, mai 2026).
+// Aucun consommateur connu dans le code Strat (vérifié via grep `/api/historique`
+// et `fetch.*api/historique` retournant 0 résultats). Si utilisé en externe
+// (curl, Postman, scripts perso), vérifier les chiffres post-migration :
+//   - uber : reflète VPS uber_eats (peut sous-évaluer si saisies FAB récentes
+//     pas encore propagées à VPS — comblé jusqu'au 03/05/2026 via Phase 0 Lot 3)
+//   - commission_uber : null (legacy était nullable, valeur jamais peuplée par
+//     le cron — cf. F6 IRRITANTS_UX_V1.md)
+// Dette : à supprimer ou refondre en sprint dédié si confirmé orphelin.
 
 export async function GET(request) {
   let parametre_id
@@ -14,20 +24,13 @@ export async function GET(request) {
   const until = searchParams.get('until')
   const granularite = searchParams.get('granularite') || 'jour'
 
-  let query = supabase
-    .from('historique_ca')
-    .select('*')
-    .eq('parametre_id', parametre_id)
-    .order('date', { ascending: true })
-
-  if (since) query = query.gte('date', since)
-  if (until) query = query.lte('date', until)
-
-  const { data, error } = await query
-
-  if (error) return Response.json({ error: error.message }, { status: 500 })
-
-  const rows = data || []
+  const today = new Date().toISOString().slice(0, 10)
+  let rows
+  try {
+    rows = await getRowsCompatHCA(parametre_id, since || '2024-01-01', until || today)
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 500 })
+  }
 
   if (granularite === 'jour') {
     return Response.json(rows.map(r => ({
