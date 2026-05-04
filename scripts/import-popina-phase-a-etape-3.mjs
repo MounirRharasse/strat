@@ -38,9 +38,13 @@ if (existsSync(envPath)) {
 const KS2_FILE = '/Users/mRharasse/Downloads/KS2 (1) (5).xlsx'
 const KROUSTY_SLUG = 'krousty-sabaidi-montpellier-castelnau'
 const PERIOD_START = '2025-01-16'
-const PERIOD_END   = '2026-05-02'
+const PERIOD_END   = '2026-05-04'
 const BATCH_SIZE   = 200
 const DRY_RUN = process.argv.includes('--dry-run')
+// --allow-drift : override one-shot du garde-fou anti-drift API.
+// Usage légitime : extension de PERIOD_END qui crée un Δ TTC légitime
+// (jours nouveaux ajoutés au backfill, pas un retraitement Popina).
+const SKIP_DRIFT_GUARD = process.argv.includes('--allow-drift')
 
 // ─── Vérif env ──────────────────────────────────────────────────────
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
@@ -338,12 +342,17 @@ console.log(`  sum caisse nouveau       : ${sumCaisseNouveau.toFixed(2)} €`)
 console.log(`  Δ caisse                 : ${deltaCaisse.toFixed(2)} € (attendu ≈ +421 855 € à l'étape 3-ter, après refacto classifier)`)
 console.log('━'.repeat(70))
 
-if (driftAlert) {
+if (driftAlert && !SKIP_DRIFT_GUARD) {
   console.error()
   console.error('🛑 STOP — drift API détecté (|Δ TTC popina| ≥ 100 €).')
   console.error('   Hypothèse : Popina a retraité des reports historiques entre étape 3 (initiale) et maintenant.')
   console.error('   Investigue avant relance. Aucune écriture lancée.')
+  console.error('   Si le drift est légitime (extension PERIOD_END), relance avec --allow-drift.')
   process.exit(1)
+} else if (driftAlert && SKIP_DRIFT_GUARD) {
+  console.warn()
+  console.warn('⚠️  Drift détecté MAIS --allow-drift activé. Continue malgré tout.')
+  console.warn(`   Δ TTC = ${deltaTtc.toFixed(2)} €. Vérifier que le drift est légitime (ex: extension PERIOD_END).`)
 }
 
 // ─── 6. Dry-run : STOP ici ──────────────────────────────────────────
