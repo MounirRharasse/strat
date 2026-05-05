@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/ia-insight",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/charges-recurrentes-mensuel",
+      "schedule": "0 3 1 * *"
     }
   ]
 }
