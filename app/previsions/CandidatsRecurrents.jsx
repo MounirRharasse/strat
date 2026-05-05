@@ -155,7 +155,7 @@ export default function CandidatsRecurrents({ candidates }) {
   return (
     <div className="space-y-3 mb-4">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-white">🔍 Candidats détectés par l&apos;IA ({candidates.length})</h3>
+        <h3 className="text-sm font-semibold text-white" title="Charges détectées automatiquement par l'IA en analysant tes transactions des 6 derniers mois (Layer 1 statistique pur, Layer 2 enrichissement Haiku 4.5 pour les libellés).">🔍 Candidats détectés par l&apos;IA ({candidates.length}) <span className="text-gray-500 text-xs">ⓘ</span></h3>
         <div className="flex gap-1 flex-shrink-0">
           <button
             onClick={() => scanner(false)}

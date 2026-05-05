@@ -41,7 +41,10 @@ export default function ChargesActives({ charges, types, parametres }) {
   return (
     <div className="space-y-3 mb-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white">📋 Charges récurrentes actives ({charges?.length || 0})</h3>
+        <h3 className="text-sm font-semibold text-white" title="Tes charges qui reviennent chaque mois (loyer, abonnements, URSSAF...). Le cron mensuel crée automatiquement les suggestions le 1er de chaque mois pour chacune. Désactive avec ✕.">
+          📋 Charges récurrentes actives ({charges?.length || 0})
+          <span className="ml-1 text-gray-500 text-xs">ⓘ</span>
+        </h3>
       </div>
 
       <div className="flex gap-2">
@@ -65,6 +68,11 @@ export default function ChargesActives({ charges, types, parametres }) {
           <p className="text-xs text-gray-500 mt-1">
             Importe depuis le catalogue pour pré-saisir tes charges mensuelles (loyer, URSSAF, abonnements...).
           </p>
+          <div className="mt-3 bg-blue-950/30 border border-blue-900/40 rounded-xl px-3 py-2">
+            <p className="text-xs text-blue-300 leading-relaxed">
+              💡 <strong>Comment ça marche :</strong> tu configures tes charges récurrentes une fois (catalogue ou personnalisée). Chaque 1er du mois, le cron mensuel génère une suggestion par charge active. Tu valides en 1 clic → transaction créée automatiquement avec HT/TVA calculés.
+            </p>
+          </div>
         </div>
       ) : (
         <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">

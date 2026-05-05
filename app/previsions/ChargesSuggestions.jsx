@@ -109,9 +109,12 @@ export default function ChargesSuggestions({ suggestions, charges }) {
   return (
     <div className="space-y-3 mb-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white">⚡ Suggestions à valider ({sorted.length})</h3>
+        <h3 className="text-sm font-semibold text-white" title="Suggestions automatiques générées le 1er du mois pour chaque charge récurrente active. Valide-les en 1 clic pour créer la transaction réelle.">
+          ⚡ Suggestions à valider ({sorted.length})
+          <span className="ml-1 text-gray-500 text-xs">ⓘ</span>
+        </h3>
         {oublisCount > 0 && (
-          <span className="text-xs text-red-400 font-medium">⚠ {oublisCount} oubli{oublisCount > 1 ? 's' : ''}</span>
+          <span className="text-xs text-red-400 font-medium" title="Suggestion attendue depuis plus de 5 jours. Probable oubli de saisie.">⚠ {oublisCount} oubli{oublisCount > 1 ? 's' : ''}</span>
         )}
       </div>
 
