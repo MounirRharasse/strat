@@ -104,52 +104,61 @@ export default async function PL({ searchParams }) {
   // ─────────────────────────────────────────────────────────────────
   // ÉVOLUTION : calcul P&L mensuel sur 12 mois calendaires glissants
   // (terminant au dernier mois clos, mois courant exclu).
-  // Fenêtre maximale = 12 mois → l'utilisateur filtre côté client (6m/12m/année).
+  //
+  // Fix bornes mois : on construit les strings ISO directement à partir des
+  // composants Y/M/D (jamais via toISOString() qui shift en UTC et casse les
+  // bornes mois dans les fuseaux non-UTC).
+  //
+  // Source des chiffres : on lit la BDD pré-agrégée par cron, PAS Popina API
+  // live. ventes_par_source via getRowsCompatHCA (popina + uber TTC/HT par
+  // jour) + paiements_caisse (cb/tpa/tr par jour) + transactions (charges).
+  // Beaucoup plus fiable que de re-fetcher Popina + filtrer (timezone, doublons
+  // de sessions caisse, etc.).
   // ─────────────────────────────────────────────────────────────────
   const now = new Date()
   // Dernier mois clos = mois précédent. Si on est le 6 mai 2026, dernier mois clos = avril 2026.
   const dernierMoisClos = new Date(now.getFullYear(), now.getMonth(), 0)  // dernier jour du mois précédent
-  const finEvolution = dernierMoisClos.toISOString().slice(0, 10)
-  const debutEvolutionDate = new Date(dernierMoisClos.getFullYear(), dernierMoisClos.getMonth() - 11, 1)
-  const debutEvolution = debutEvolutionDate.toISOString().slice(0, 10)
 
-  const [reportsEvol, { data: transactionsEvol }, historiqueEvol] = await Promise.all([
-    getAllReports(debutEvolution, finEvolution),
+  // Helper : construit 'YYYY-MM-DD' directement depuis y/m/d (évite tout problème timezone).
+  const fmtISO = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+  const fmtMois = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`
+
+  const debutEvolutionY = dernierMoisClos.getFullYear()
+  const debutEvolutionM = dernierMoisClos.getMonth() - 11
+  const debutEvolutionDate = new Date(debutEvolutionY, debutEvolutionM, 1)
+  const debutEvolution = fmtISO(debutEvolutionDate.getFullYear(), debutEvolutionDate.getMonth(), 1)
+  const finEvolution = fmtISO(dernierMoisClos.getFullYear(), dernierMoisClos.getMonth(), dernierMoisClos.getDate())
+
+  // Fetch BDD : pas de Popina API live pour Évolution (cron déjà-agrégé est fiable + dédupliqué).
+  const [{ data: transactionsEvol }, historiqueEvol, { data: paiementsEvol }] = await Promise.all([
     supabase.from('transactions').select('*').eq('parametre_id', parametre_id).gte('date', debutEvolution).lte('date', finEvolution),
     getRowsCompatHCA(parametre_id, debutEvolution, finEvolution),
+    supabase.from('paiements_caisse').select('date, especes, cb, tr').eq('parametre_id', parametre_id).gte('date', debutEvolution).lte('date', finEvolution),
   ])
 
   // Construit la liste des 12 mois ISO (mai 2025 → avril 2026 par exemple)
   const moisList = []
   for (let i = 11; i >= 0; i--) {
     const d = new Date(dernierMoisClos.getFullYear(), dernierMoisClos.getMonth() - i, 1)
-    const moisISO = d.toISOString().slice(0, 7)
+    const moisISO = fmtMois(d.getFullYear(), d.getMonth())
     const moisLabel = d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }).replace('.', '')
     const debut = `${moisISO}-01`
-    const finDate = new Date(d.getFullYear(), d.getMonth() + 1, 0)
-    const fin = finDate.toISOString().slice(0, 10)
+    // Dernier jour du mois : new Date(y, m+1, 0).getDate() retourne 28/29/30/31 selon le mois
+    const dernierJour = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+    const fin = fmtISO(d.getFullYear(), d.getMonth(), dernierJour)
     moisList.push({ mois: moisISO, label: moisLabel, debut, fin })
   }
 
-  // Pour chaque mois, calcule les agrégats P&L
+  // Pour chaque mois, calcule les agrégats P&L à partir de la BDD pré-agrégée
   const evolutionMois = moisList.map((m) => {
-    // Reports Popina filtrés par mois — startedAt = businessDate effectif (jour d'ouverture
-    // session caisse), finalizedAt en fallback. Cf. lib/audit-builder.js. PAS openedAt qui
-    // est un champ orders, pas reports.
-    const reportsM = reportsEvol.filter(r => {
-      const d = (r.startedAt || r.finalizedAt || '').slice(0, 10)
-      return d >= m.debut && d <= m.fin
-    })
     const transM = (transactionsEvol || []).filter(t => t.date >= m.debut && t.date <= m.fin)
     const histM = (historiqueEvol || []).filter(h => h.date >= m.debut && h.date <= m.fin)
+    const paieM = (paiementsEvol || []).filter(p => p.date >= m.debut && p.date <= m.fin)
 
-    // CA Popina + Uber → caBrut, caHT
-    const caBrutPopinaM = reportsM.reduce((s, r) => s + toEuros(r.totalSales), 0)
-    const tvaPopinaM = reportsM.reduce((s, r) => s + (r.reportTaxes || []).reduce((t, x) => t + toEuros(x.taxAmount), 0), 0)
-    const caHTPopinaM = caBrutPopinaM - tvaPopinaM
+    // CA depuis BDD agrégée (popina + uber TTC/HT par jour, déjà dédupliqué cron)
+    const caBrutM = histM.reduce((s, r) => s + (r.ca_brut || 0), 0)
+    const caHTM = histM.reduce((s, r) => s + (r.ca_ht || 0), 0)
     const caUberM = histM.reduce((s, r) => s + (r.uber || 0), 0)
-    const caBrutM = caBrutPopinaM + caUberM
-    const caHTM = caHTPopinaM + (caUberM / 1.1)
     const tvaTotaleM = caBrutM - caHTM
 
     // Charges par macro (HT)
@@ -168,19 +177,11 @@ export default async function PL({ searchParams }) {
       detailCat[cat] = sumCat([cat])
     }
 
-    // Commissions
-    const allPaymentsM = reportsM.flatMap(r => r.reportPayments || [])
-    const allProductsM = reportsM.flatMap(r => r.reportProducts || [])
-    let borneM = 0, cbM = 0, trM = 0
-    for (const p of allPaymentsM) {
-      const nom = (p.paymentName || '').toLowerCase()
-      const x = toEuros(p.paymentAmount)
-      if (nom.includes('borne')) borneM += x
-      else if (nom.includes('carte') || nom.includes('credit')) cbM += x
-      else if (nom.includes('titre') || nom.includes('restaurant')) trM += x
-    }
-    const foxorderM = allProductsM.filter(p => p.category === 'FOXORDERS').reduce((s, p) => s + toEuros(p.productSales), 0)
-    const commissionsM = (borneM + cbM) * tauxCB + trM * tauxTR + caUberM * tauxUber + foxorderM * tauxFoxorder
+    // Commissions depuis paiements_caisse (cb / tpa fusionné dans cb post-Lot 3-ter, tr) + uber
+    // Note V1.1 : foxorder skip (tauxFoxorder=0 pour Krousty actuellement, négligeable).
+    const cbM = paieM.reduce((s, p) => s + (Number(p.cb) || 0), 0)
+    const trM = paieM.reduce((s, p) => s + (Number(p.tr) || 0), 0)
+    const commissionsM = cbM * tauxCB + trM * tauxTR + caUberM * tauxUber
 
     // EBE / IS / Résultat
     const margeBruteM = caHTM - consoM
