@@ -29,13 +29,13 @@ export default function CandidatsRecurrents({ candidates }) {
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState(null)
 
-  async function scanner() {
+  async function scanner(withEnrich = false) {
     setScanning(true); setErrorMsg(null); setScanResult(null)
     try {
       const res = await fetch('/api/charges-recurrentes/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        body: JSON.stringify(withEnrich ? { enrich: true } : {})
       })
       const data = await res.json()
       if (!res.ok) {
@@ -46,6 +46,7 @@ export default function CandidatsRecurrents({ candidates }) {
         nbCandidats: data.nb_candidats,
         nbInserts: data.nb_inserts,
         nbUpdates: data.nb_updates,
+        enrichment: data.enrichment || null,
       })
       router.refresh()
     } catch (e) {
@@ -118,21 +119,33 @@ export default function CandidatsRecurrents({ candidates }) {
           <div className="bg-blue-950/30 border border-blue-900/40 rounded-xl px-4 py-2 text-xs text-blue-300">
             Scan terminé : {scanResult.nbCandidats} candidat{scanResult.nbCandidats > 1 ? 's' : ''} détecté{scanResult.nbCandidats > 1 ? 's' : ''}
             {scanResult.nbInserts > 0 ? ` (${scanResult.nbInserts} nouveau${scanResult.nbInserts > 1 ? 'x' : ''})` : ''}
+            {scanResult.enrichment && (
+              <span> · Enrichissement IA : {scanResult.enrichment.nb_enriched} libellés améliorés ({(scanResult.enrichment.cout_eur * 100).toFixed(1)} centime{scanResult.enrichment.cout_eur * 100 > 1 ? 's' : ''})</span>
+            )}
           </div>
         )}
         <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4">
           <p className="text-sm text-gray-300">
             L&apos;IA peut analyser tes transactions des 6 derniers mois pour détecter les fournisseurs récurrents (loyers, abonnements, assurances...) que tu n&apos;aurais pas encore configurés.
           </p>
-          <button
-            onClick={scanner}
-            disabled={scanning}
-            className="mt-3 w-full py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white disabled:opacity-50"
-          >
-            {scanning ? '🔍 Scan en cours...' : '🔍 Scanner mes transactions'}
-          </button>
+          <div className="mt-3 space-y-2">
+            <button
+              onClick={() => scanner(false)}
+              disabled={scanning}
+              className="w-full py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white disabled:opacity-50"
+            >
+              {scanning ? '🔍 Scan en cours...' : '🔍 Scanner mes transactions'}
+            </button>
+            <button
+              onClick={() => scanner(true)}
+              disabled={scanning}
+              className="w-full py-2 rounded-xl text-xs font-medium bg-gray-800 text-gray-300 disabled:opacity-50"
+            >
+              {scanning ? '...' : '✨ Scanner + enrichir libellés (Haiku 4.5, ~1 centime)'}
+            </button>
+          </div>
           <p className="text-xs text-gray-500 mt-2">
-            Détection statistique pure (pas d&apos;envoi à un LLM). Les fournisseurs déjà ignorés ne sont pas re-proposés.
+            Détection statistique pure par défaut. L&apos;option « enrichir » envoie les noms fournisseurs à Claude Haiku pour proposer des libellés plus lisibles.
           </p>
         </div>
       </div>
@@ -141,16 +154,26 @@ export default function CandidatsRecurrents({ candidates }) {
 
   return (
     <div className="space-y-3 mb-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-white">🔍 Candidats détectés par l&apos;IA ({candidates.length})</h3>
-        <button
-          onClick={scanner}
-          disabled={scanning}
-          className="text-xs px-2 py-1 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
-          title="Re-scanner mes transactions"
-        >
-          {scanning ? '...' : '↻ Re-scanner'}
-        </button>
+        <div className="flex gap-1 flex-shrink-0">
+          <button
+            onClick={() => scanner(false)}
+            disabled={scanning}
+            className="text-xs px-2 py-1 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+            title="Re-scanner sans appel LLM"
+          >
+            {scanning ? '...' : '↻'}
+          </button>
+          <button
+            onClick={() => scanner(true)}
+            disabled={scanning}
+            className="text-xs px-2 py-1 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+            title="Re-scanner + enrichir libellés via Haiku 4.5"
+          >
+            {scanning ? '...' : '✨'}
+          </button>
+        </div>
       </div>
 
       <p className="text-xs text-gray-500">
@@ -168,6 +191,9 @@ export default function CandidatsRecurrents({ candidates }) {
           Scan terminé : {scanResult.nbCandidats} candidat{scanResult.nbCandidats > 1 ? 's' : ''} détecté{scanResult.nbCandidats > 1 ? 's' : ''}
           {scanResult.nbInserts > 0 ? ` (${scanResult.nbInserts} nouveau${scanResult.nbInserts > 1 ? 'x' : ''})` : ''}
           {scanResult.nbUpdates > 0 ? `, ${scanResult.nbUpdates} mis à jour` : ''}
+          {scanResult.enrichment && (
+            <span> · ✨ {scanResult.enrichment.nb_enriched} libellés enrichis ({(scanResult.enrichment.cout_eur * 100).toFixed(1)} cent.)</span>
+          )}
         </div>
       )}
 
@@ -180,10 +206,18 @@ export default function CandidatsRecurrents({ candidates }) {
             <div key={c.id} className="bg-gray-900 rounded-2xl border border-gray-800 p-3">
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{labelLibelle}</p>
+                  <p className="text-sm font-medium truncate">
+                    {labelLibelle}
+                    {c.hints_llm?.libelle_propose && c.hints_llm.libelle_propose !== c.fournisseur_nom_brut && (
+                      <span className="ml-1 text-xs text-blue-400" title="Libellé proposé par l&apos;IA">✨</span>
+                    )}
+                  </p>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {fmtEur(c.montant_median)} TTC / {fmtFreq} · {c.nb_observations} fois sur {Math.round((new Date(c.derniere_date) - new Date(c.premiere_date)) / 86400000 / 30)} mois
                   </p>
+                  {c.hints_llm?.commentaire_llm && (
+                    <p className="text-xs text-blue-400 mt-0.5 italic">💬 {c.hints_llm.commentaire_llm}</p>
+                  )}
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-950 text-blue-400 flex-shrink-0">
                   {c.confiance_pct}% confiance
