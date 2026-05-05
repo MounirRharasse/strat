@@ -94,6 +94,9 @@ export async function POST(request, { params }) {
   const dateTransaction = date_modifiee || suggestion.date_attendue
   const fournisseurNom = suggestion.fournisseur_suggere || charge.fournisseur_nom_attendu || charge.libelle_personnalise
 
+  // sous_categorie NOT NULL en BDD → fallback sur le libellé de la charge si non défini
+  const sousCategorie = charge.sous_categorie || charge.libelle_personnalise || 'autres'
+
   const { data: transaction, error: tErr } = await supabase
     .from('transactions')
     .insert({
@@ -104,7 +107,7 @@ export async function POST(request, { params }) {
       montant_ht: montantHt,
       montant_tva: montantTva,
       fournisseur_nom: fournisseurNom,
-      sous_categorie: charge.sous_categorie || null,
+      sous_categorie: sousCategorie,
       categorie_pl: charge.categorie_pl,
       note: note || `Validé depuis suggestion #${suggestion.id}`,
     })
