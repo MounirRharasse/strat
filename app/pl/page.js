@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { getParametreIdFromSession } from '@/lib/auth'
 import { getRowsCompatHCA } from '@/lib/data/ventes'
 import { getPeriodeFromFiltreId } from '@/lib/periods'
+import { agregerHierarchie } from '@/lib/analyses/sorties'
 import { redirect } from 'next/navigation'
 import PLClient from './PLClient'
 
@@ -95,6 +96,11 @@ export default async function PL({ searchParams }) {
   const impots = ebe <= 0 ? 0 : ebe <= 42500 ? Math.round(ebe * 0.15) : Math.round(ebe * 0.25)
   const resultatNet = ebe - impots
 
+  // Hiérarchie 4 niveaux (macro → cat → sous-cat → fournisseur) pour PRow expandables.
+  // Réutilise agregerHierarchie de /analyses pour cohérence et éviter duplication logique.
+  // total_ht ajouté à chaque niveau (Lot post-V1.1) pour affichage HT cohérent /pl.
+  const hierarchie = agregerHierarchie(transactions || [])
+
   const data = {
     caBrut, tvaCollectee: tvaTotale, caHT,
     consommations, fraisPersonnel,
@@ -105,7 +111,8 @@ export default async function PL({ searchParams }) {
     caUberTotal,
     margebrute, totalPersonnel, totalInfluencables, totalFixe,
     ebe, impots, resultatNet, transactions,
-    since, today, periode
+    since, today, periode,
+    hierarchie,
   }
 
   return <PLClient data={data} periode={periode} />

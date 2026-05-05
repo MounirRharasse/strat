@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import PeriodFilter from '@/components/PeriodFilter'
 
@@ -9,6 +9,8 @@ export default function PLClient({ data, periode }) {
   const [panel, setPanel] = useState(null)
   const [isMode, setIsMode] = useState('auto')
   const [isManuel, setIsManuel] = useState('')
+  // Expand inline (post-V1.1) : Set des clés expandées : 'cat:loyers_charges' / 'sc:loyers_charges:loyer'
+  const [expanded, setExpanded] = useState(new Set())
   const donutRef = useRef(null)
   const chartInstance = useRef(null)
 
@@ -18,7 +20,27 @@ export default function PLClient({ data, periode }) {
     redevanceMarque, prestationsOp, fraisDivers, autresCharges,
     caUberTotal, commissionCB, commissionTR, commissionUber, commissionFoxorder, totalCommissions,
     margebrute, totalPersonnel, totalInfluencables, totalFixe,
-    ebe, impots, resultatNet, transactions, since, today } = data
+    ebe, impots, resultatNet, transactions, since, today, hierarchie } = data
+
+  // Index categorie_pl → nœud catégorie de la hiérarchie (sous-cat + fournisseurs)
+  const indexCategorie = useMemo(() => {
+    const idx = {}
+    for (const macro of (hierarchie || [])) {
+      for (const cat of (macro.categoriesPL || [])) {
+        idx[cat.cat] = cat
+      }
+    }
+    return idx
+  }, [hierarchie])
+
+  const toggleExpand = (key) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   const isEstime = isMode === 'auto' ? impots : (parseFloat(isManuel) || 0)
   const resultatFinal = ebe - isEstime
@@ -83,26 +105,108 @@ export default function PLClient({ data, periode }) {
     })
   }, [onglet, consommations, totalPersonnel, totalInfluencables, totalFixe, totalCommissions])
 
-  const PRow = ({ label, value, isTotal, isSub, isMinus, indent, secteur, cats, color }) => (
-    <div
-      className={"flex items-center px-4 py-2.5 border-b border-gray-800 " + (isTotal ? 'bg-gray-800/80' : isSub ? 'bg-gray-900/60' : '') + (cats ? ' cursor-pointer hover:bg-gray-800/40' : '')}
-      onClick={cats ? () => openPanel(label, cats, color || '#6b7280') : undefined}
-    >
-      <div className={"flex-1 " + (indent ? 'pl-3' : '')}>
-        <p className={"text-sm " + (isTotal ? 'font-bold text-white' : isSub ? 'font-semibold text-gray-100' : 'text-gray-300')}>
-          {isMinus && value !== 0 ? '− ' : ''}{label}
-          {cats && <span className="text-gray-500 ml-1 text-xs">›</span>}
-        </p>
-        {secteur && <p className="text-xs text-gray-500 mt-0.5">Norme : {secteur}</p>}
-      </div>
-      <div className="text-right">
-        <p className={"font-mono font-semibold " + (isTotal ? 'text-base ' : 'text-sm ') + posColor(value)}>
-          {value >= 0 ? '' : '-'}{fmt(value)}
-        </p>
-        <p className="text-xs text-gray-500">{pct(value)}</p>
-      </div>
-    </div>
-  )
+  // PRow refondue : si `cats` contient 1 categorie_pl reconnue dans la hiérarchie,
+  // la ligne devient expandable inline (sous-cat → fournisseurs) au lieu d'ouvrir
+  // le panel latéral. Le panel reste utilisé uniquement par le donut (drill macro).
+  const PRow = ({ label, value, isTotal, isSub, isMinus, indent, secteur, cats, color }) => {
+    const expandKey = cats && cats.length === 1 ? `cat:${cats[0]}` : null
+    const catNode = expandKey ? indexCategorie[cats[0]] : null
+    const expandable = !!catNode && (catNode.sousCategories?.length > 0)
+    const isOpen = expandKey && expanded.has(expandKey)
+
+    return (
+      <>
+        <div
+          className={"flex items-center px-4 py-2.5 border-b border-gray-800 " + (isTotal ? 'bg-gray-800/80' : isSub ? 'bg-gray-900/60' : '') + (expandable ? ' cursor-pointer hover:bg-gray-800/40' : '')}
+          onClick={expandable ? () => toggleExpand(expandKey) : undefined}
+        >
+          <div className={"flex-1 " + (indent ? 'pl-3' : '')}>
+            <p className={"text-sm " + (isTotal ? 'font-bold text-white' : isSub ? 'font-semibold text-gray-100' : 'text-gray-300')}>
+              {expandable && <span className={"inline-block text-gray-500 mr-1 text-xs transition-transform " + (isOpen ? 'rotate-90' : '')}>›</span>}
+              {isMinus && value !== 0 ? '− ' : ''}{label}
+            </p>
+            {secteur && <p className="text-xs text-gray-500 mt-0.5">Norme : {secteur}</p>}
+          </div>
+          <div className="text-right">
+            <p className={"font-mono font-semibold " + (isTotal ? 'text-base ' : 'text-sm ') + posColor(value)}>
+              {value >= 0 ? '' : '-'}{fmt(value)}
+            </p>
+            <p className="text-xs text-gray-500">{pct(value)}</p>
+          </div>
+        </div>
+
+        {/* Niveau 3 (sous-cat) + Niveau 4 (fournisseurs) inline */}
+        {isOpen && expandable && (
+          <div className="bg-gray-950 border-b border-gray-800">
+            {catNode.sousCategories.map((sc) => {
+              const scKey = `${expandKey}:${sc.sousCat || '__sans__'}`
+              const scOpen = expanded.has(scKey)
+              const scHasFour = (sc.fournisseurs || []).length > 0
+              return (
+                <div key={sc.sousCat || '__sans__'}>
+                  <div
+                    onClick={scHasFour ? () => toggleExpand(scKey) : undefined}
+                    className={"flex items-center pl-8 pr-4 py-1.5 border-b border-gray-800/50 " + (scHasFour ? 'cursor-pointer hover:bg-gray-800/30' : '')}
+                  >
+                    <div className="flex-1">
+                      <p className="text-xs text-gray-400">
+                        {scHasFour && <span className={"inline-block text-gray-600 mr-1 text-[10px] transition-transform " + (scOpen ? 'rotate-90' : '')}>›</span>}
+                        {sc.label}
+                      </p>
+                    </div>
+                    <p className="text-xs font-mono text-gray-400">-{fmt(sc.total_ht)}</p>
+                  </div>
+
+                  {scOpen && scHasFour && sc.fournisseurs.map((f) => {
+                    const fKey = `${scKey}:${f.fournisseur}`
+                    const fOpen = expanded.has(fKey)
+                    // Récupère les transactions individuelles du fournisseur dans la sous-cat
+                    const txsFour = (transactions || []).filter(t =>
+                      t.fournisseur_nom === f.fournisseur &&
+                      t.categorie_pl === cats[0] &&
+                      (t.sous_categorie || '') === (sc.sousCat || '')
+                    )
+                    return (
+                      <div key={f.fournisseur}>
+                        <div
+                          onClick={() => toggleExpand(fKey)}
+                          className="flex items-center pl-12 pr-4 py-1 border-b border-gray-800/30 cursor-pointer hover:bg-gray-800/30"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[11px] text-gray-500 truncate">
+                              <span className={"inline-block text-gray-700 mr-1 text-[10px] transition-transform " + (fOpen ? 'rotate-90' : '')}>›</span>
+                              {f.fournisseur}
+                              <span className="ml-1 text-gray-700">({txsFour.length})</span>
+                            </p>
+                          </div>
+                          <p className="text-[11px] font-mono text-gray-500 ml-2 whitespace-nowrap">-{fmt(f.total_ht)}</p>
+                        </div>
+
+                        {/* Niveau 5 : transactions individuelles */}
+                        {fOpen && txsFour.map((t) => (
+                          <div key={t.id} className="flex items-center pl-16 pr-4 py-1 border-b border-gray-800/20 bg-gray-950/50">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] text-gray-600">
+                                {t.date}
+                                {t.note && <span className="ml-1 text-gray-700">· {t.note}</span>}
+                              </p>
+                            </div>
+                            <p className="text-[10px] font-mono text-gray-600 ml-2 whitespace-nowrap">
+                              -{fmt(t.montant_ht)} <span className="text-gray-700">TTC {fmt(t.montant_ttc)}</span>
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </>
+    )
+  }
 
   const SectionHeader = ({ label, color }) => (
     <div className={"px-4 py-1.5 border-b border-gray-800/50 " + color}>
