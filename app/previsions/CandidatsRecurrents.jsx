@@ -107,7 +107,7 @@ export default function CandidatsRecurrents({ candidates }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{labelLibelle}</p>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {fmtEur(c.montant_median)}/{fmtFreq} · {c.nb_observations} fois sur {Math.round((new Date(c.derniere_date) - new Date(c.premiere_date)) / 86400000 / 30)} mois
+                    {fmtEur(c.montant_median)} TTC / {fmtFreq} · {c.nb_observations} fois sur {Math.round((new Date(c.derniere_date) - new Date(c.premiere_date)) / 86400000 / 30)} mois
                   </p>
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-950 text-blue-400 flex-shrink-0">
@@ -127,12 +127,12 @@ export default function CandidatsRecurrents({ candidates }) {
                     />
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400 w-20">Montant</span>
+                    <span className="text-xs text-gray-400 w-20">Montant TTC</span>
                     <input
                       type="number" step="0.01"
                       value={editMontant} onChange={e => setEditMontant(e.target.value)}
                       className="flex-1 bg-gray-900 rounded px-2 py-1 text-sm font-mono text-right"
-                      placeholder={String(c.montant_median)}
+                      placeholder={String(c.montant_median) + ' € TTC'}
                     />
                   </div>
                 </div>

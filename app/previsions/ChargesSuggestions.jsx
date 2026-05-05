@@ -141,16 +141,23 @@ export default function ChargesSuggestions({ suggestions, charges }) {
                 </div>
                 <div className="text-right flex-shrink-0">
                   {editing ? (
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editMontant}
-                      onChange={e => setEditMontant(e.target.value)}
-                      className="w-24 bg-gray-800 rounded px-2 py-1 text-right text-sm font-mono"
-                      autoFocus
-                    />
+                    <div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editMontant}
+                        onChange={e => setEditMontant(e.target.value)}
+                        className="w-24 bg-gray-800 rounded px-2 py-1 text-right text-sm font-mono"
+                        placeholder="Montant TTC"
+                        autoFocus
+                      />
+                      <p className="text-[10px] text-gray-500 mt-0.5">€ TTC</p>
+                    </div>
                   ) : (
-                    <p className="text-sm font-mono font-semibold text-white">{fmtEur(s.montant_suggere)}</p>
+                    <div>
+                      <p className="text-sm font-mono font-semibold text-white">{fmtEur(s.montant_suggere)}</p>
+                      <p className="text-[10px] text-gray-500">TTC</p>
+                    </div>
                   )}
                 </div>
               </div>

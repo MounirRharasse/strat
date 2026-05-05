@@ -83,6 +83,7 @@ export default function ChargesActives({ charges, types, parametres }) {
                     ? <span className="text-gray-400">~ {c.montant_attendu ? fmtEur(c.montant_attendu) : 'calculé'}</span>
                     : fmtEur(c.montant_attendu)}
                 </p>
+                <p className="text-[10px] text-gray-500">TTC</p>
               </div>
               <button
                 onClick={() => desactiver(c)}
