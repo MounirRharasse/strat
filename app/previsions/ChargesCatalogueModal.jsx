@@ -75,6 +75,7 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
   const [selection, setSelection] = useState(initSelection)
   const [montants, setMontants] = useState({})
   const [jours, setJours] = useState({})
+  const [frequences, setFrequences] = useState({})  // override frequence_defaut catalogue
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
 
@@ -154,7 +155,7 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
             libelle_personnalise: t.libelle,
             categorie_pl: t.categorie_pl,
             profil,
-            frequence: t.frequence_defaut,
+            frequence: frequences[t.id] || t.frequence_defaut,
             jour_du_mois: jour,
             montant_attendu: montantAttendu,
             formule_calcul: formuleCalcul,
@@ -357,23 +358,35 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
                       </div>
 
                       {isSelected && !isExist && (
-                        <div className="mt-2 flex gap-2">
-                          {!isVariable && (
+                        <div className="mt-2 space-y-2">
+                          <div className="flex gap-2">
+                            {!isVariable && (
+                              <input
+                                type="number" step="0.01"
+                                value={montants[t.id] ?? ''}
+                                onChange={e => setMontants({ ...montants, [t.id]: e.target.value })}
+                                placeholder={placeholderMontant(t) + '€'}
+                                className="flex-1 bg-gray-900 rounded px-2 py-1 text-sm font-mono text-right"
+                              />
+                            )}
                             <input
-                              type="number" step="0.01"
-                              value={montants[t.id] ?? ''}
-                              onChange={e => setMontants({ ...montants, [t.id]: e.target.value })}
-                              placeholder={placeholderMontant(t) + '€'}
-                              className="flex-1 bg-gray-900 rounded px-2 py-1 text-sm font-mono text-right"
+                              type="number" min="1" max="28" step="1"
+                              value={jours[t.id] ?? ''}
+                              onChange={e => setJours({ ...jours, [t.id]: e.target.value })}
+                              placeholder={'jour ' + placeholderJour(t)}
+                              className="w-20 bg-gray-900 rounded px-2 py-1 text-sm font-mono text-center"
                             />
-                          )}
-                          <input
-                            type="number" min="1" max="28" step="1"
-                            value={jours[t.id] ?? ''}
-                            onChange={e => setJours({ ...jours, [t.id]: e.target.value })}
-                            placeholder={'jour ' + placeholderJour(t)}
-                            className="w-20 bg-gray-900 rounded px-2 py-1 text-sm font-mono text-center"
-                          />
+                          </div>
+                          <select
+                            value={frequences[t.id] || t.frequence_defaut}
+                            onChange={e => setFrequences({ ...frequences, [t.id]: e.target.value })}
+                            className="w-full bg-gray-900 rounded px-2 py-1 text-xs"
+                          >
+                            <option value="mensuel">Mensuel</option>
+                            <option value="trimestriel">Trimestriel</option>
+                            <option value="semestriel">Semestriel</option>
+                            <option value="annuel">Annuel</option>
+                          </select>
                         </div>
                       )}
                     </div>
