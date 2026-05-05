@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import PeriodFilter from '@/components/PeriodFilter'
+import EvolutionView from './EvolutionView'
 
 export default function PLClient({ data, periode }) {
   const [onglet, setOnglet] = useState('resume')
@@ -271,10 +272,10 @@ export default function PLClient({ data, periode }) {
       </div>
 
       <div className="flex gap-2 mb-4 border-b border-gray-800 pb-3">
-        {['resume', 'detail', 'comparaisons'].map(o => (
+        {['resume', 'detail', 'evolution'].map(o => (
           <button key={o} onClick={() => setOnglet(o)}
             className={"px-4 py-2 rounded-xl text-sm font-medium border transition " + (onglet === o ? 'bg-white text-gray-950 border-white' : 'bg-gray-900 text-gray-400 border-gray-800')}>
-            {o === 'resume' ? 'Resume' : o === 'detail' ? 'Detail' : 'Comparaisons'}
+            {o === 'resume' ? 'Resume' : o === 'detail' ? 'Detail' : 'Évolution'}
           </button>
         ))}
       </div>
@@ -449,33 +450,8 @@ export default function PLClient({ data, periode }) {
         </div>
       )}
 
-      {onglet === 'comparaisons' && (
-        <div>
-          <div className="bg-blue-950/30 border border-blue-900/30 rounded-xl px-4 py-3 mb-4 text-xs text-blue-400">
-            Comparaison avancee multi-periodes disponible dans Analyses →
-          </div>
-          <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
-            <div className="grid grid-cols-3 border-b border-gray-800">
-              <div className="px-4 py-2 text-xs text-gray-500 uppercase">Indicateur</div>
-              <div className="px-4 py-2 text-xs text-gray-500 uppercase text-right">Ce mois</div>
-              <div className="px-4 py-2 text-xs text-gray-500 uppercase text-right">Norme</div>
-            </div>
-            {[
-              { label: 'CA HT', val: fmt(caHT), norme: '—' },
-              { label: 'Food cost', val: foodCostP.toFixed(1) + '%', norme: '28-32%', ok: foodCostP <= 32 && foodCostP > 0 },
-              { label: 'Staff cost', val: staffCostP.toFixed(1) + '%', norme: '28-35%', ok: staffCostP <= 35 && staffCostP > 0 },
-              { label: 'Commissions', val: fmt(totalCommissions || 0), norme: '—' },
-              { label: 'EBE', val: ebeP.toFixed(1) + '%', norme: '15-20%', ok: ebeP >= 15 },
-              { label: 'Resultat net', val: (resultatFinal >= 0 ? '' : '-') + fmt(resultatFinal), norme: '> 0', ok: resultatFinal >= 0 },
-            ].map(row => (
-              <div key={row.label} className="grid grid-cols-3 border-b border-gray-800 last:border-0">
-                <div className="px-4 py-3 text-sm text-gray-300">{row.label}</div>
-                <div className={"px-4 py-3 text-sm font-mono text-right " + (row.ok === true ? 'text-green-400' : row.ok === false ? 'text-red-400' : 'text-white')}>{row.val}</div>
-                <div className="px-4 py-3 text-xs text-gray-500 text-right">{row.norme}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {onglet === 'evolution' && (
+        <EvolutionView evolutionMois={data.evolutionMois} />
       )}
 
       {panel && (

@@ -101,6 +101,109 @@ export default async function PL({ searchParams }) {
   // total_ht ajouté à chaque niveau (Lot post-V1.1) pour affichage HT cohérent /pl.
   const hierarchie = agregerHierarchie(transactions || [])
 
+  // ─────────────────────────────────────────────────────────────────
+  // ÉVOLUTION : calcul P&L mensuel sur 12 mois calendaires glissants
+  // (terminant au dernier mois clos, mois courant exclu).
+  // Fenêtre maximale = 12 mois → l'utilisateur filtre côté client (6m/12m/année).
+  // ─────────────────────────────────────────────────────────────────
+  const now = new Date()
+  // Dernier mois clos = mois précédent. Si on est le 6 mai 2026, dernier mois clos = avril 2026.
+  const dernierMoisClos = new Date(now.getFullYear(), now.getMonth(), 0)  // dernier jour du mois précédent
+  const finEvolution = dernierMoisClos.toISOString().slice(0, 10)
+  const debutEvolutionDate = new Date(dernierMoisClos.getFullYear(), dernierMoisClos.getMonth() - 11, 1)
+  const debutEvolution = debutEvolutionDate.toISOString().slice(0, 10)
+
+  const [reportsEvol, { data: transactionsEvol }, historiqueEvol] = await Promise.all([
+    getAllReports(debutEvolution, finEvolution),
+    supabase.from('transactions').select('*').eq('parametre_id', parametre_id).gte('date', debutEvolution).lte('date', finEvolution),
+    getRowsCompatHCA(parametre_id, debutEvolution, finEvolution),
+  ])
+
+  // Construit la liste des 12 mois ISO (mai 2025 → avril 2026 par exemple)
+  const moisList = []
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(dernierMoisClos.getFullYear(), dernierMoisClos.getMonth() - i, 1)
+    const moisISO = d.toISOString().slice(0, 7)
+    const moisLabel = d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }).replace('.', '')
+    const debut = `${moisISO}-01`
+    const finDate = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+    const fin = finDate.toISOString().slice(0, 10)
+    moisList.push({ mois: moisISO, label: moisLabel, debut, fin })
+  }
+
+  // Pour chaque mois, calcule les agrégats P&L
+  const evolutionMois = moisList.map((m) => {
+    // Reports Popina filtrés par mois — startedAt = businessDate effectif (jour d'ouverture
+    // session caisse), finalizedAt en fallback. Cf. lib/audit-builder.js. PAS openedAt qui
+    // est un champ orders, pas reports.
+    const reportsM = reportsEvol.filter(r => {
+      const d = (r.startedAt || r.finalizedAt || '').slice(0, 10)
+      return d >= m.debut && d <= m.fin
+    })
+    const transM = (transactionsEvol || []).filter(t => t.date >= m.debut && t.date <= m.fin)
+    const histM = (historiqueEvol || []).filter(h => h.date >= m.debut && h.date <= m.fin)
+
+    // CA Popina + Uber → caBrut, caHT
+    const caBrutPopinaM = reportsM.reduce((s, r) => s + toEuros(r.totalSales), 0)
+    const tvaPopinaM = reportsM.reduce((s, r) => s + (r.reportTaxes || []).reduce((t, x) => t + toEuros(x.taxAmount), 0), 0)
+    const caHTPopinaM = caBrutPopinaM - tvaPopinaM
+    const caUberM = histM.reduce((s, r) => s + (r.uber || 0), 0)
+    const caBrutM = caBrutPopinaM + caUberM
+    const caHTM = caHTPopinaM + (caUberM / 1.1)
+    const tvaTotaleM = caBrutM - caHTM
+
+    // Charges par macro (HT)
+    const sumCat = (cats) => transM.filter(t => cats.includes(t.categorie_pl)).reduce((s, t) => s + (t.montant_ht || 0), 0)
+    const consoM = sumCat(['consommations'])
+    const personnelM = sumCat(['frais_personnel', 'autres_charges_personnel', 'frais_deplacement'])
+    const influencablesM = sumCat(['entretiens_reparations', 'energie', 'autres_frais_influencables'])
+    const fixesM = sumCat(['loyers_charges', 'honoraires', 'redevance_marque', 'prestations_operationnelles', 'frais_divers', 'autres_charges'])
+
+    // Détail par categorie_pl (pour expand accordéon Q2=C)
+    const detailCat = {}
+    for (const cat of ['frais_personnel', 'autres_charges_personnel', 'frais_deplacement',
+                       'entretiens_reparations', 'energie', 'autres_frais_influencables',
+                       'loyers_charges', 'honoraires', 'redevance_marque', 'prestations_operationnelles',
+                       'frais_divers', 'autres_charges']) {
+      detailCat[cat] = sumCat([cat])
+    }
+
+    // Commissions
+    const allPaymentsM = reportsM.flatMap(r => r.reportPayments || [])
+    const allProductsM = reportsM.flatMap(r => r.reportProducts || [])
+    let borneM = 0, cbM = 0, trM = 0
+    for (const p of allPaymentsM) {
+      const nom = (p.paymentName || '').toLowerCase()
+      const x = toEuros(p.paymentAmount)
+      if (nom.includes('borne')) borneM += x
+      else if (nom.includes('carte') || nom.includes('credit')) cbM += x
+      else if (nom.includes('titre') || nom.includes('restaurant')) trM += x
+    }
+    const foxorderM = allProductsM.filter(p => p.category === 'FOXORDERS').reduce((s, p) => s + toEuros(p.productSales), 0)
+    const commissionsM = (borneM + cbM) * tauxCB + trM * tauxTR + caUberM * tauxUber + foxorderM * tauxFoxorder
+
+    // EBE / IS / Résultat
+    const margeBruteM = caHTM - consoM
+    const ebeM = margeBruteM - personnelM - influencablesM - fixesM - commissionsM
+    const isM = ebeM <= 0 ? 0 : ebeM <= 42500 ? Math.round(ebeM * 0.15) : Math.round(ebeM * 0.25)
+    const resultatNetM = ebeM - isM
+
+    // Ratios
+    const foodCostP = caHTM > 0 ? (consoM / caHTM * 100) : 0
+    const staffCostP = caHTM > 0 ? (personnelM / caHTM * 100) : 0
+    const ebeP = caHTM > 0 ? (ebeM / caHTM * 100) : 0
+
+    return {
+      mois: m.mois, label: m.label,
+      caBrut: caBrutM, tvaCollectee: tvaTotaleM, caHT: caHTM,
+      consommations: consoM, margeBrute: margeBruteM,
+      personnel: personnelM, influencables: influencablesM, fixes: fixesM,
+      commissions: commissionsM, ebe: ebeM, impots: isM, resultatNet: resultatNetM,
+      detailCat,
+      foodCostP, staffCostP, ebeP,
+    }
+  })
+
   const data = {
     caBrut, tvaCollectee: tvaTotale, caHT,
     consommations, fraisPersonnel,
@@ -113,6 +216,7 @@ export default async function PL({ searchParams }) {
     ebe, impots, resultatNet, transactions,
     since, today, periode,
     hierarchie,
+    evolutionMois,
   }
 
   return <PLClient data={data} periode={periode} />
