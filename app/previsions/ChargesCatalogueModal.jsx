@@ -29,7 +29,26 @@ const SECTION_LABELS = {
   entretiens_reparations: '🛡️ Sécurité & entretien',
   autres_charges: '💼 Fiscalité',
   consommations: '🍴 Consommations',
+  frais_personnel: '👥 Personnel',
+  frais_deplacement: '🚗 Déplacements',
+  frais_divers: '📦 Frais divers',
 }
+
+// Liste exhaustive des catégories P&L pour le dropdown charge custom
+const CATEGORIES_PL_OPTIONS = [
+  ['loyers_charges', 'Locaux & Loyers'],
+  ['energie', 'Énergie'],
+  ['autres_frais_influencables', 'Télécoms & abonnements'],
+  ['autres_charges_personnel', 'Charges personnel (URSSAF, mutuelle...)'],
+  ['frais_personnel', 'Salaires'],
+  ['frais_deplacement', 'Déplacements'],
+  ['entretiens_reparations', 'Entretiens & réparations'],
+  ['honoraires', 'Honoraires (comptable, avocat...)'],
+  ['redevance_marque', 'Redevance marque (franchise)'],
+  ['prestations_operationnelles', 'Logiciels & prestations'],
+  ['frais_divers', 'Frais divers'],
+  ['autres_charges', 'Autres charges (TVA, IS, CFE...)'],
+]
 
 export default function ChargesCatalogueModal({ types, parametres, chargesExistantes, onClose, onCreated }) {
   // Map des charge_type_id déjà utilisés par le tenant (disabled)
@@ -58,6 +77,29 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
   const [jours, setJours] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
+
+  // Sub-form charge personnalisée (charge_type_id=null, source='manuel_ui')
+  const [showCustom, setShowCustom] = useState(false)
+  const [custom, setCustom] = useState({
+    libelle: '',
+    categorie_pl: 'loyers_charges',
+    profil: 'fixe',
+    frequence: 'mensuel',
+    jour_du_mois: '',
+    montant_attendu: '',
+    fournisseur_nom_attendu: '',
+  })
+
+  function customIsValid() {
+    if (!custom.libelle.trim()) return false
+    const j = parseInt(custom.jour_du_mois, 10)
+    if (!j || j < 1 || j > 28) return false
+    if (custom.profil === 'fixe') {
+      const m = parseFloat(custom.montant_attendu)
+      if (!m || m <= 0) return false
+    }
+    return true
+  }
 
   // Group par categorie_pl
   const groupes = useMemo(() => {
@@ -130,6 +172,35 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
       }
     }
 
+    // Charge personnalisée : POST si valide
+    if (showCustom && customIsValid()) {
+      try {
+        const res = await fetch('/api/charges-recurrentes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            charge_type_id: null,
+            libelle_personnalise: custom.libelle.trim(),
+            categorie_pl: custom.categorie_pl,
+            fournisseur_nom_attendu: custom.fournisseur_nom_attendu.trim() || null,
+            profil: custom.profil,
+            frequence: custom.frequence,
+            jour_du_mois: parseInt(custom.jour_du_mois, 10),
+            montant_attendu: parseFloat(custom.montant_attendu) || null,
+            source_creation: 'manuel_ui',
+          })
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          errors.push(`${custom.libelle} : ${data.error || res.status}`)
+        } else {
+          nbCreees++
+        }
+      } catch (e) {
+        errors.push(`${custom.libelle} : ${e.message}`)
+      }
+    }
+
     setSubmitting(false)
     if (errors.length > 0) {
       setErrorMsg(`${nbCreees} créées, ${errors.length} erreurs : ${errors.slice(0, 3).join(' / ')}`)
@@ -138,7 +209,9 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
     }
   }
 
-  const nbSelected = Object.values(selection).filter(Boolean).length
+  const nbSelectedCatalogue = Object.values(selection).filter(Boolean).length
+  const nbCustom = showCustom && customIsValid() ? 1 : 0
+  const nbSelected = nbSelectedCatalogue + nbCustom
 
   return (
     <div className="fixed inset-0 z-50 flex items-end" onClick={onClose}>
@@ -157,6 +230,100 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 pb-3">
+          {/* Bloc charge personnalisée — toggleable */}
+          <div className="mb-4">
+            {!showCustom ? (
+              <button
+                onClick={() => setShowCustom(true)}
+                className="w-full text-left px-3 py-3 rounded-xl border border-dashed border-gray-700 bg-gray-800/30 text-sm text-gray-300 hover:border-white hover:bg-gray-800 transition"
+              >
+                ➕ Ajouter une charge personnalisée (hors catalogue)
+              </button>
+            ) : (
+              <div className="rounded-xl border border-white bg-gray-800 p-3 space-y-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider">Charge personnalisée</p>
+                  <button
+                    onClick={() => { setShowCustom(false); setCustom({ libelle: '', categorie_pl: 'loyers_charges', profil: 'fixe', frequence: 'mensuel', jour_du_mois: '', montant_attendu: '', fournisseur_nom_attendu: '' }) }}
+                    className="text-xs text-gray-500 hover:text-gray-300"
+                  >
+                    Annuler
+                  </button>
+                </div>
+
+                <input
+                  type="text"
+                  value={custom.libelle}
+                  onChange={e => setCustom({ ...custom, libelle: e.target.value })}
+                  placeholder="Libellé (ex. Cotisation syndicat pro)"
+                  className="w-full bg-gray-900 rounded px-3 py-2 text-sm"
+                  autoFocus
+                />
+
+                <input
+                  type="text"
+                  value={custom.fournisseur_nom_attendu}
+                  onChange={e => setCustom({ ...custom, fournisseur_nom_attendu: e.target.value })}
+                  placeholder="Fournisseur attendu (optionnel)"
+                  className="w-full bg-gray-900 rounded px-3 py-2 text-sm"
+                />
+
+                <select
+                  value={custom.categorie_pl}
+                  onChange={e => setCustom({ ...custom, categorie_pl: e.target.value })}
+                  className="w-full bg-gray-900 rounded px-3 py-2 text-sm"
+                >
+                  {CATEGORIES_PL_OPTIONS.map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
+
+                <div className="flex gap-2">
+                  <select
+                    value={custom.profil}
+                    onChange={e => setCustom({ ...custom, profil: e.target.value })}
+                    className="flex-1 bg-gray-900 rounded px-2 py-2 text-sm"
+                  >
+                    <option value="fixe">Fixe (montant identique)</option>
+                    <option value="variable_recurrente">Variable récurrente</option>
+                    <option value="one_shot">Ponctuelle (one-shot)</option>
+                  </select>
+                  <select
+                    value={custom.frequence}
+                    onChange={e => setCustom({ ...custom, frequence: e.target.value })}
+                    className="flex-1 bg-gray-900 rounded px-2 py-2 text-sm"
+                  >
+                    <option value="mensuel">Mensuel</option>
+                    <option value="trimestriel">Trimestriel</option>
+                    <option value="semestriel">Semestriel</option>
+                    <option value="annuel">Annuel</option>
+                  </select>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="number" step="0.01"
+                    value={custom.montant_attendu}
+                    onChange={e => setCustom({ ...custom, montant_attendu: e.target.value })}
+                    placeholder={custom.profil === 'fixe' ? 'Montant € (requis)' : 'Montant € (optionnel si variable)'}
+                    className="flex-1 bg-gray-900 rounded px-3 py-2 text-sm font-mono text-right"
+                  />
+                  <input
+                    type="number" min="1" max="28" step="1"
+                    value={custom.jour_du_mois}
+                    onChange={e => setCustom({ ...custom, jour_du_mois: e.target.value })}
+                    placeholder="Jour 1-28"
+                    className="w-24 bg-gray-900 rounded px-2 py-2 text-sm font-mono text-center"
+                  />
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  {customIsValid() ? '✓ Cette charge sera créée à la confirmation.' : 'Libellé + jour (1-28) requis. Montant requis si profil fixe.'}
+                </p>
+              </div>
+            )}
+          </div>
+
           {Object.entries(groupes).map(([cat, items]) => (
             <div key={cat} className="mb-4">
               <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">
