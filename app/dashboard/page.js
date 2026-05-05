@@ -156,6 +156,13 @@ export default async function Dashboard({ searchParams }) {
   ])
   const derniereDate = derniereDateRow  // alias rétrocompat (était { data: derniereDate })
 
+  // ─── Lot 10 Charges Récurrentes : count suggestions pending pour badge dashboard ───
+  const { count: nbSuggestionsPending } = await supabase
+    .from('charges_suggestions')
+    .select('*', { count: 'exact', head: true })
+    .eq('parametre_id', parametre_id)
+    .eq('statut', 'pending')
+
   // ───────────────────────────────────────────────────────────────────
   // Variations CA / Cmd / Panier
   // ───────────────────────────────────────────────────────────────────
@@ -374,7 +381,8 @@ export default async function Dashboard({ searchParams }) {
       nbJours: periodeActuelle.nbJours
     },
     briefDisponible,
-    insightDisponible
+    insightDisponible,
+    nbSuggestionsPending: nbSuggestionsPending || 0,
   }
 
   return <DashboardClient data={data} params={params || {}} periode={filtreId} />

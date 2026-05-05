@@ -142,6 +142,18 @@ export default function DashboardClient({ data, params, periode }) {
         </Link>
       )}
 
+      {data?.nbSuggestionsPending > 0 && (
+        <Link
+          href="/previsions"
+          className="flex items-center justify-between mb-4 text-xs hover:opacity-80"
+        >
+          <span className="text-blue-400">
+            ⚡ {data.nbSuggestionsPending} charge{data.nbSuggestionsPending > 1 ? 's' : ''} récurrente{data.nbSuggestionsPending > 1 ? 's' : ''} à valider
+          </span>
+          <span className="text-gray-600">›</span>
+        </Link>
+      )}
+
       <div className="mb-4">
         <PeriodFilter profil="pilotage" basePath="/dashboard" filtreActif={periode} />
       </div>
