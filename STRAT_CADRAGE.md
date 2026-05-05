@@ -108,6 +108,21 @@ Les charges fixes mensuelles d'un restaurant — loyer, redevance, expert-compta
 
 **Cas particulier mono-tenant Krousty** : la masse salariale (catégorie `frais_personnel`) est traitée comme **agrégat catégoriel** plutôt que par fournisseur individuel, parce que la pratique de saisie a évolué (jusqu'à février 2026 : 1 ligne `Salaires` agrégée ; depuis mars 2026 : 16 lignes nominatives par employé). Le générateur de brouillon mensuel se base sur `SUM(frais_personnel) + SUM(autres_charges WHERE fournisseur IN (...gérants))` sur les 3 derniers mois (cf. IRRITANTS §F15). À documenter pour les futurs tenants : le détecteur multi-tenant doit gérer cette variation de pratique.
 
+### 6.5.1 Glossaire terminologique (Lot 11 V1.1)
+
+Termes officiels Strat — à respecter dans UI, doc, code et conversations IA :
+
+- **Charge récurrente** — transaction attendue à intervalle régulier (mensuel/trimestriel/semestriel/annuel). Couvre les profils fixe et variable_recurrente. Stockée dans `charges_recurrentes`.
+- **Charge fixe** — sous-type de charge récurrente où le montant est identique chaque période (ex: loyer à 2288 €/mois). Champ `profil = 'fixe'`.
+- **Charge variable récurrente** — sous-type de charge récurrente où le montant est calculé ou estimé chaque période (ex: URSSAF = salaires × 42%, TVA = collectée − déductible). Champ `profil = 'variable_recurrente'`.
+- **One-shot** — transaction non récurrente (achat ponctuel, sortie, dépannage). Non générée par le cron mensuel. Champ `profil = 'one_shot'` (présent pour permettre le filtrage UI mais hors scope auto-suggestion).
+- **Suggestion** — proposition générée par le cron mensuel pour une charge récurrente, en attente de validation par le gérant. Stockée dans `charges_suggestions`. Validation = INSERT transaction réelle.
+- **Candidat** — récurrence détectée par l'IA dans les transactions historiques (Lot 5 Layer 1 statistique + Lot 6 Layer 2 LLM Haiku enrichissement libellés), non encore convertie en charge récurrente. Stockée dans `recurrence_candidates`.
+
+**À NE PAS confondre** :
+- "Charge récurrente" (notion produit V1.1) ≠ "Frais fixes" UI du P&L (sous-section visuelle qui regroupe 6 catégories : `loyers_charges, honoraires, redevance_marque, prestations_operationnelles, frais_divers, autres_charges`).
+- `lib/seuil-rentabilite.js:CATEGORIES_NON_CONSO` (12 catégories = tout sauf `consommations`, utilisé pour le seuil de rentabilité 30j) ≠ "Frais fixes" UI (6 catégories). L'ancien nom `CATEGORIES_CHARGES_FIXES` est gardé en alias rétro-compat mais à retirer V1.2.
+
 ---
 
 ## 7. Ce qui reste opiniâtre

@@ -7,7 +7,7 @@ import { regrouperCanaux } from '@/lib/canaux'
 import { decomposerParSousCategorie, topFournisseursConsommations } from '@/lib/food-cost-decomposition'
 import { calculerFoodCost6Mois } from '@/lib/food-cost-historique'
 import {
-  CATEGORIES_CHARGES_FIXES,
+  CATEGORIES_NON_CONSO,
   filtrer30j,
   calculerSeuil,
   calculerProjection,
@@ -129,7 +129,7 @@ export default async function Dashboard({ searchParams }) {
       .from('transactions')
       .select('date, montant_ht, categorie_pl, fournisseur_nom, sous_categorie, id, montant_ttc')
       .eq('parametre_id', parametre_id)
-      .in('categorie_pl', CATEGORIES_CHARGES_FIXES)
+      .in('categorie_pl', CATEGORIES_NON_CONSO)
       .gte('date', debut6Mois)
       .lte('date', todayISO),
     // Count "jours uber" sur le mois courant (card Acces rapide → Journal).
@@ -244,7 +244,7 @@ export default async function Dashboard({ searchParams }) {
   // Charges fixes mensuelles agrégées (mois calendaire) — gardées pour rétro-compat
   // Utilisées par la projection de ce-mois et certains affichages drill.
   const chargesFixesMensuelles = (transactionsMois || [])
-    .filter(t => CATEGORIES_CHARGES_FIXES.includes(t.categorie_pl))
+    .filter(t => CATEGORIES_NON_CONSO.includes(t.categorie_pl))
     .reduce((s, t) => s + t.montant_ht, 0)
 
   // ───────────────────────────────────────────────────────────────────
