@@ -76,6 +76,7 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
   const [montants, setMontants] = useState({})
   const [jours, setJours] = useState({})
   const [frequences, setFrequences] = useState({})  // override frequence_defaut catalogue
+  const [tauxTva, setTauxTva] = useState({})        // override taux_tva_defaut catalogue
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
 
@@ -89,6 +90,7 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
     jour_du_mois: '',
     montant_attendu: '',
     fournisseur_nom_attendu: '',
+    taux_tva_defaut: 20,
   })
 
   function customIsValid() {
@@ -147,6 +149,7 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
       }
 
       try {
+        const tauxTvaCharge = tauxTva[t.id] != null ? parseFloat(tauxTva[t.id]) : (t.taux_tva_defaut ?? 20)
         const res = await fetch('/api/charges-recurrentes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -159,6 +162,7 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
             jour_du_mois: jour,
             montant_attendu: montantAttendu,
             formule_calcul: formuleCalcul,
+            taux_tva_defaut: tauxTvaCharge,
             source_creation: 'onboarding_catalogue',
           })
         })
@@ -188,6 +192,7 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
             frequence: custom.frequence,
             jour_du_mois: parseInt(custom.jour_du_mois, 10),
             montant_attendu: parseFloat(custom.montant_attendu) || null,
+            taux_tva_defaut: parseFloat(custom.taux_tva_defaut) || 20,
             source_creation: 'manuel_ui',
           })
         })
@@ -227,6 +232,9 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
           <h2 className="text-lg font-semibold">Importer depuis catalogue</h2>
           <p className="text-xs text-gray-400 mt-1">
             Coche les charges qui te concernent. Tu pourras éditer ou ajouter plus tard.
+          </p>
+          <p className="text-xs text-blue-400 mt-1">
+            💡 Saisis les montants <strong>TTC</strong> (tels que sur la facture). Le HT et la TVA sont calculés automatiquement avec le taux choisi.
           </p>
         </div>
 
@@ -306,7 +314,7 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
                     type="number" step="0.01"
                     value={custom.montant_attendu}
                     onChange={e => setCustom({ ...custom, montant_attendu: e.target.value })}
-                    placeholder={custom.profil === 'fixe' ? 'Montant € (requis)' : 'Montant € (optionnel si variable)'}
+                    placeholder={custom.profil === 'fixe' ? 'Montant TTC € (requis)' : 'Montant TTC € (optionnel si variable)'}
                     className="flex-1 bg-gray-900 rounded px-3 py-2 text-sm font-mono text-right"
                   />
                   <input
@@ -316,6 +324,20 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
                     placeholder="Jour 1-28"
                     className="w-24 bg-gray-900 rounded px-2 py-2 text-sm font-mono text-center"
                   />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400">Taux TVA</span>
+                  <select
+                    value={custom.taux_tva_defaut}
+                    onChange={e => setCustom({ ...custom, taux_tva_defaut: parseFloat(e.target.value) })}
+                    className="flex-1 bg-gray-900 rounded px-2 py-2 text-sm font-mono"
+                  >
+                    <option value={0}>0% (exonéré / hors TVA)</option>
+                    <option value={5.5}>5,5%</option>
+                    <option value={10}>10%</option>
+                    <option value={20}>20%</option>
+                  </select>
                 </div>
 
                 <p className="text-xs text-gray-500">
@@ -365,7 +387,7 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
                                 type="number" step="0.01"
                                 value={montants[t.id] ?? ''}
                                 onChange={e => setMontants({ ...montants, [t.id]: e.target.value })}
-                                placeholder={placeholderMontant(t) + '€'}
+                                placeholder={placeholderMontant(t) + '€ TTC'}
                                 className="flex-1 bg-gray-900 rounded px-2 py-1 text-sm font-mono text-right"
                               />
                             )}
@@ -377,16 +399,29 @@ export default function ChargesCatalogueModal({ types, parametres, chargesExista
                               className="w-20 bg-gray-900 rounded px-2 py-1 text-sm font-mono text-center"
                             />
                           </div>
-                          <select
-                            value={frequences[t.id] || t.frequence_defaut}
-                            onChange={e => setFrequences({ ...frequences, [t.id]: e.target.value })}
-                            className="w-full bg-gray-900 rounded px-2 py-1 text-xs"
-                          >
-                            <option value="mensuel">Mensuel</option>
-                            <option value="trimestriel">Trimestriel</option>
-                            <option value="semestriel">Semestriel</option>
-                            <option value="annuel">Annuel</option>
-                          </select>
+                          <div className="flex gap-2">
+                            <select
+                              value={frequences[t.id] || t.frequence_defaut}
+                              onChange={e => setFrequences({ ...frequences, [t.id]: e.target.value })}
+                              className="flex-1 bg-gray-900 rounded px-2 py-1 text-xs"
+                            >
+                              <option value="mensuel">Mensuel</option>
+                              <option value="trimestriel">Trimestriel</option>
+                              <option value="semestriel">Semestriel</option>
+                              <option value="annuel">Annuel</option>
+                            </select>
+                            <select
+                              value={tauxTva[t.id] != null ? tauxTva[t.id] : (t.taux_tva_defaut ?? 20)}
+                              onChange={e => setTauxTva({ ...tauxTva, [t.id]: parseFloat(e.target.value) })}
+                              className="w-32 bg-gray-900 rounded px-2 py-1 text-xs font-mono"
+                              title="Taux TVA"
+                            >
+                              <option value={0}>TVA 0%</option>
+                              <option value={5.5}>TVA 5,5%</option>
+                              <option value={10}>TVA 10%</option>
+                              <option value={20}>TVA 20%</option>
+                            </select>
+                          </div>
                         </div>
                       )}
                     </div>
