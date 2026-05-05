@@ -2,6 +2,11 @@ import { getAllReports, getAllOrders } from '@/lib/popina'
 import { supabase } from '@/lib/supabase'
 import { getParametreIdFromSession } from '@/lib/auth'
 import { getRowsCompatHCA } from '@/lib/data/ventes'
+import {
+  listChargesActives,
+  listSuggestionsPending,
+  listCandidatesPending,
+} from '@/lib/data/charges-recurrentes'
 import { redirect } from 'next/navigation'
 import PreviClient from './PreviClient'
 
@@ -25,12 +30,21 @@ export default async function Previsions() {
   // Migration étape 5 Lot 4 : historique + entrees uber → getRowsCompatHCA.
   // historique[i].uber = VPS uber_eats.montant_ttc, nb_commandes_uber = VPS uber_eats.nb_commandes
   // (sémantique "nb commandes Uber" du legacy, fixée Lot 4).
-  const [reports, orders, { data: transactions }, historique, { data: parametres }] = await Promise.all([
+  // Lot 4 Charges Récurrentes V1.1 : ajout charges_actives + suggestions_pending + candidates + types catalogue.
+  const moisCourant = firstDay.slice(0, 7)
+  const [
+    reports, orders, { data: transactions }, historique, { data: parametres },
+    chargesActives, suggestionsPending, candidatesPending, { data: chargesTypes }
+  ] = await Promise.all([
     getAllReports(firstDay, today),
     getAllOrders(firstDay, today),
     supabase.from('transactions').select('*').eq('parametre_id', parametre_id).gte('date', firstDay).lte('date', today),
     getRowsCompatHCA(parametre_id, firstDay, today),
-    supabase.from('parametres').select('*').eq('id', parametre_id).single()
+    supabase.from('parametres').select('*').eq('id', parametre_id).single(),
+    listChargesActives(parametre_id),
+    listSuggestionsPending(parametre_id, moisCourant),
+    listCandidatesPending(parametre_id),
+    supabase.from('charges_types').select('*').order('ordre_affichage', { ascending: true })
   ])
 
   // CA Popina
@@ -112,6 +126,10 @@ export default async function Previsions() {
       commissionsUber={commissionsUber}
       parametres={parametres || {}}
       regimeTva={parametres?.regime_tva || 'mensuel'}
+      chargesActives={chargesActives || []}
+      suggestionsPending={suggestionsPending || []}
+      candidatesPending={candidatesPending || []}
+      chargesTypes={chargesTypes || []}
     />
   )
 }

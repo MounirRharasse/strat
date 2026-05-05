@@ -1,15 +1,21 @@
 'use client'
 
 import { useState } from 'react'
+import ChargesSuggestions from './ChargesSuggestions'
+import CandidatsRecurrents from './CandidatsRecurrents'
+import ChargesActives from './ChargesActives'
 
 export default function PreviClient({
   caBrut, caHT, nbJours, nbJoursEcoules, nbJoursRestants,
   panierMoyen, commandesParJour, consommations, totalCharges,
   loyer, redevance, honoraires, salaires, urssaf,
   tvaAPayer, commissionsCB, commissionsTR, commissionsUber,
-  parametres, regimeTva
+  parametres, regimeTva,
+  chargesActives, suggestionsPending, candidatesPending, chargesTypes,
 }) {
-  const [onglet, setOnglet] = useState('projection')
+  // Onglet par défaut : 'charges' si suggestions/candidats à traiter, sinon 'projection'
+  const hasActions = (suggestionsPending?.length > 0) || (candidatesPending?.length > 0)
+  const [onglet, setOnglet] = useState(hasActions ? 'charges' : 'projection')
   const [ticketSim, setTicketSim] = useState(Math.round(panierMoyen * 100) / 100)
   const [foodSim, setFoodSim] = useState(30)
   const [ticketsJourSim, setTicketsJourSim] = useState(commandesParJour)
@@ -144,16 +150,30 @@ export default function PreviClient({
 
       <div className="flex gap-2 mb-4">
         {[
+          { key: 'charges', label: 'Charges', badge: (suggestionsPending?.length || 0) + (candidatesPending?.length || 0) },
           { key: 'projection', label: 'Projection' },
           { key: 'echeances', label: 'Echeances' },
           { key: 'simulateur', label: 'Simulateur' }
         ].map(o => (
           <button key={o.key} onClick={() => setOnglet(o.key)}
-            className={"flex-1 text-center text-xs py-2 rounded-xl border transition " + (onglet === o.key ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>
+            className={"flex-1 text-center text-xs py-2 rounded-xl border transition relative " + (onglet === o.key ? 'bg-white text-gray-950 border-white font-semibold' : 'bg-gray-900 text-gray-400 border-gray-800')}>
             {o.label}
+            {o.badge > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {o.badge > 9 ? '9+' : o.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
+
+      {onglet === 'charges' && (
+        <div>
+          <ChargesSuggestions suggestions={suggestionsPending} charges={chargesActives} />
+          <CandidatsRecurrents candidates={candidatesPending} />
+          <ChargesActives charges={chargesActives} types={chargesTypes} parametres={parametres} />
+        </div>
+      )}
 
       {onglet === 'projection' && (
         <div className="space-y-3">
