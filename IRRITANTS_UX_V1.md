@@ -452,7 +452,50 @@ Cf. **Catégorie F** pour les irritants spécifiquement liés à la migration da
 
 ---
 
+## 33. /admin/imports — bugs et incohérences architecturales
+
+- **Découvert** : 6 mai 2026, session post-Lot 12 charges récurrentes V1.1 (challenge méthodologique sur la page `/admin/imports`).
+- **Source** : audit Mounir + Claude.
+- **Cas** : la page admin/imports (UI + route POST `/api/admin/imports`) a accumulé des dettes méthodologiques. Liste exhaustive issue de la review du 6/05 :
+
+### 33.1 Cohérence architecturale (P0)
+- **Tables legacy ciblées** : la page propose 4 types d'import dont 3 sur la trajectoire de drop V1.2 (`historique_ca`, `entrees`, `uber_orders`). Si l'étape 7 du Sprint Migration data layer s'exécute sans toucher cette page, elle casse en silence.
+- **Pas d'intégration charges_recurrentes V1.1** : risque de doublons silencieux entre transactions importées via cette page et transactions générées par la validation des suggestions du cron mensuel. Aucun anti-doublon ne couvre ce cas.
+
+### 33.2 Bugs latents (P1)
+- **Auto-mapping cassé (race condition React)** : `app/admin/imports/page.js:117` met à jour `colonnesFichier` via `setColonnesFichier(headers)` puis ligne 127 lit `colonnesFichier.find(...)` qui voit la valeur du render précédent (closure JS). Sur le premier upload, l'auto-mapping s'exécute sur `[]` → `match = undefined` → `autoMap = {}`. Fix : utiliser la variable locale `headers` directement.
+- **`parseDate` naïf** : assume `DD/MM/YYYY` (ligne 78). Si format US ou autre → date silencieusement inversée.
+- **`parseFloat` ne gère pas le format français** : `parseFloat("1 234,56")` retourne `1` (tronque à l'espace, ignore le `,`). Sur un fichier Mounir avec format FR, garanti.
+- **`categorie_pl` fallback silencieux à `'autres_charges'`** : ligne 121, si la catégorie du fichier n'est pas dans `CAT_MAP` ou pas un code valide → fallback sans warning. Pollue le P&L silencieusement.
+- **Pas d'anti-doublon transactions** : seul `historique_ca` fait `upsert`. Re-run du même import = doublons garantis pour `transactions`, `uber_orders`, `entrees`.
+
+### 33.3 Sécurité (P2)
+- **`parametre_id` passé dans formData** : la route POST accepte un UUID arbitraire en formData, pas de cookie session admin vérifié. Le middleware `/admin/*` protège la page mais `/api/admin/*` n'a pas d'auth explicite côté route → accessible directement par requête HTTP brute.
+- **Pas de log audit** : aucune trace de qui a importé quoi pour quel tenant.
+
+### 33.4 UX / Maintenance (P2)
+- **Label "CA Historique"** ambigu (suggère "données passées" alors que c'est `historique_ca` = ventes journalières). Remplacer par "Ventes journalières" ou similaire — cohérent glossaire §6.5.1 STRAT_CADRAGE.md.
+- **Aucun guidage format** : pas d'indication date attendue, format nombres, encoding, liste catégories acceptées.
+- **Aperçu ne montre pas les conflits de parsing** : 3 lignes brutes affichées, pas "tel que parsé". Bug `parseFloat` invisible dans l'aperçu.
+- **Bouton "Nouvel import"** ne reset pas tout (mapping reste chargé du tenant courant).
+
+### 33.5 Manque d'intelligence post-import (P3)
+- **Pas de trigger scan IA charges récurrentes après import transactions** : Mounir importe 6 mois d'historique → aucune détection auto. Doit aller manuellement sur `/previsions` lancer le scan.
+- **Pas de détection conflit avec charges_recurrentes existantes en pré-aperçu** : aucun avertissement si N transactions du fichier matchent une charge récurrente déjà configurée.
+
+### Pistes
+- **Session dédiée P0+P1** (~1h) : bannière warning legacy + fix auto-mapping + parseFloat FR + anti-doublon transactions + categorie_pl strict.
+- **Session V1.2** : refonte complète vers nouvelles tables (`ventes_par_source`, `paiements_caisse`) post-drop legacy étape 7.
+- **Bonus IA** : trigger `lancerScanDetection({ enrich: true })` automatique post-import transactions, affiche les nouvelles charges récurrentes détectées.
+
+### Priorité
+- **P0+P1 (legacy banner + bugs latents)** : V1 (à traiter avant onboarding tenant 2 sinon il importe et plante).
+- **P2+P3 (sécurité, UX, IA post-import)** : V1.1 / V1.2.
+
+---
+
 ## Historique
 
 - **v1.0 (26 avril 2026)** : capture initiale du document de l'associée + retours Mounir de la session du 26 avril
 - **v1.1 (3 mai 2026)** : ajouts post-cadrage initial. §27 à §31 (faux positifs IA, anomalies sémantiques, helper CA HT) ajoutés in-place fin avril/début mai 2026 sans bump de version. §32 (sessions antérieures non closes par commit) ajouté le 3 mai. Catégorie F créée le 3 mai pour regrouper les 13 irritants identifiés lors de la session de cadrage Phase A migration data layer (cf. `STRAT_ARCHITECTURE.md` v1.1 §Décision #5 et `PLANNING_V1.md` v1.2 §Sprint Migration data layer).
+- **v1.2 (6 mai 2026)** : ajout §33 — review /admin/imports, 16 dettes identifiées (cohérence architecturale legacy, bugs latents auto-mapping/parseFloat/parseDate, sécurité auth, UX, manque intégration charges récurrentes V1.1).
