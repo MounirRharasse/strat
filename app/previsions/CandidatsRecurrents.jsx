@@ -26,6 +26,34 @@ export default function CandidatsRecurrents({ candidates }) {
   const [editId, setEditId] = useState(null)
   const [editJour, setEditJour] = useState('')
   const [editMontant, setEditMontant] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [scanResult, setScanResult] = useState(null)
+
+  async function scanner() {
+    setScanning(true); setErrorMsg(null); setScanResult(null)
+    try {
+      const res = await fetch('/api/charges-recurrentes/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setErrorMsg(data.error || 'Erreur ' + res.status)
+        return
+      }
+      setScanResult({
+        nbCandidats: data.nb_candidats,
+        nbInserts: data.nb_inserts,
+        nbUpdates: data.nb_updates,
+      })
+      router.refresh()
+    } catch (e) {
+      setErrorMsg('Erreur réseau : ' + e.message)
+    } finally {
+      setScanning(false)
+    }
+  }
 
   async function accepter(cand) {
     setLoadingId(cand.id); setErrorMsg(null)
@@ -76,23 +104,70 @@ export default function CandidatsRecurrents({ candidates }) {
     }
   }
 
+  // Section vide : on garde affichée pour exposer le bouton scan
   if (!candidates || candidates.length === 0) {
-    return null  // Section masquée si vide
+    return (
+      <div className="space-y-3 mb-4">
+        <h3 className="text-sm font-semibold text-white">🔍 Candidats détectés par l&apos;IA</h3>
+        {errorMsg && (
+          <div className="bg-red-950/30 border border-red-900/40 rounded-xl px-4 py-2 text-xs text-red-400">
+            {errorMsg}
+          </div>
+        )}
+        {scanResult && (
+          <div className="bg-blue-950/30 border border-blue-900/40 rounded-xl px-4 py-2 text-xs text-blue-300">
+            Scan terminé : {scanResult.nbCandidats} candidat{scanResult.nbCandidats > 1 ? 's' : ''} détecté{scanResult.nbCandidats > 1 ? 's' : ''}
+            {scanResult.nbInserts > 0 ? ` (${scanResult.nbInserts} nouveau${scanResult.nbInserts > 1 ? 'x' : ''})` : ''}
+          </div>
+        )}
+        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4">
+          <p className="text-sm text-gray-300">
+            L&apos;IA peut analyser tes transactions des 6 derniers mois pour détecter les fournisseurs récurrents (loyers, abonnements, assurances...) que tu n&apos;aurais pas encore configurés.
+          </p>
+          <button
+            onClick={scanner}
+            disabled={scanning}
+            className="mt-3 w-full py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white disabled:opacity-50"
+          >
+            {scanning ? '🔍 Scan en cours...' : '🔍 Scanner mes transactions'}
+          </button>
+          <p className="text-xs text-gray-500 mt-2">
+            Détection statistique pure (pas d&apos;envoi à un LLM). Les fournisseurs déjà ignorés ne sont pas re-proposés.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-3 mb-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white">🔍 Candidats détectés par l'IA ({candidates.length})</h3>
+        <h3 className="text-sm font-semibold text-white">🔍 Candidats détectés par l&apos;IA ({candidates.length})</h3>
+        <button
+          onClick={scanner}
+          disabled={scanning}
+          className="text-xs px-2 py-1 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+          title="Re-scanner mes transactions"
+        >
+          {scanning ? '...' : '↻ Re-scanner'}
+        </button>
       </div>
 
       <p className="text-xs text-gray-500">
-        L'IA a repéré ces charges qui semblent revenir régulièrement. Tu peux les ajouter à ta liste, ou les ignorer.
+        L&apos;IA a repéré ces charges qui semblent revenir régulièrement. Tu peux les ajouter à ta liste, ou les ignorer.
       </p>
 
       {errorMsg && (
         <div className="bg-red-950/30 border border-red-900/40 rounded-xl px-4 py-2 text-xs text-red-400">
           {errorMsg}
+        </div>
+      )}
+
+      {scanResult && (
+        <div className="bg-blue-950/30 border border-blue-900/40 rounded-xl px-4 py-2 text-xs text-blue-300">
+          Scan terminé : {scanResult.nbCandidats} candidat{scanResult.nbCandidats > 1 ? 's' : ''} détecté{scanResult.nbCandidats > 1 ? 's' : ''}
+          {scanResult.nbInserts > 0 ? ` (${scanResult.nbInserts} nouveau${scanResult.nbInserts > 1 ? 'x' : ''})` : ''}
+          {scanResult.nbUpdates > 0 ? `, ${scanResult.nbUpdates} mis à jour` : ''}
         </div>
       )}
 
