@@ -50,7 +50,9 @@ const POPINA  = 'a4e92432-7d3c-4b3f-aafb-745d19e6b2f8'
 // À mettre à jour après le déploiement étape 4 vers la date du premier
 // cron post-déploiement (format ISO 'YYYY-MM-DD'). Si null → fenêtre
 // dual-write considérée comme non démarrée.
-const DUAL_WRITE_START_DATE = null
+// 2026-05-05 : 1er cron étape 4 effectivement passé (02:30 UTC), date du
+// premier upsert dual-write VPS+PC en plus de HCA legacy.
+const DUAL_WRITE_START_DATE = '2026-05-05'
 
 const TOL_TTC = 1.00      // tolérance ±1€ par jour sur TTC
 const TOL_COL = 1.00      // tolérance ±1€ par jour par colonne ventilation
